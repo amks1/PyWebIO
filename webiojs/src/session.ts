@@ -67,13 +67,13 @@ export class SubPageSession implements Session {
 
     // check if the window is a pywebio subpage
     static is_sub_page(window_obj: Window = window): boolean {
-        //  - `window._pywebio_page` lazy promise is not undefined
-        //  - window.opener is not null and window.opener.WebIO is not undefined
+        //  - `window._pywebio_page` lazy promise is defined
+        //  - window._pywebio_master_session is defined
 
         try {
             // @ts-ignore
-            return window_obj._pywebio_page !== undefined && window_obj.opener !== null && window_obj.opener.WebIO !== undefined;
-        }catch (e) {
+            return window_obj._pywebio_page !== undefined && window_obj._pywebio_master_session !== undefined;
+        } catch (e) {
             return false;
         }
     }
@@ -107,12 +107,14 @@ export class SubPageSession implements Session {
 
     // send text message to opener
     send_message(msg: ClientEvent, onprogress?: (loaded: number, total: number) => void): void {
-        window.opener.WebIO._state.CurrentSession.send_message(msg, onprogress);
+        // @ts-ignore
+        window._pywebio_master_session.send_message(msg, onprogress);
     }
 
     // send binary message to opener
     send_buffer(data: Blob, onprogress?: (loaded: number, total: number) => void): void {
-        window.opener.WebIO._state.CurrentSession.send_buffer(data, onprogress);
+        // @ts-ignore
+        window._pywebio_master_session.send_buffer(data, onprogress);
     }
 
     close_session(): void {

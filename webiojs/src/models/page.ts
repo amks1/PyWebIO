@@ -40,18 +40,28 @@ function on_page_lost(page_id: string) {
 let clean_up_task_id: number = null;
 
 export function OpenPage(page_id: string, task_id: string) {
+    let page = window.open(window.location.href);
+    if(!SubPageSession.is_sub_page(window))
+        AddPage(page, page_id, task_id)
+    else
+        // @ts-ignore
+        window._pywebio_add_page(page, page_id, task_id)
+}
+
+export function AddPage(page: Window, page_id: string, task_id: string) {
     if (page_id in subpages)
         throw `Can't open page, the page id "${page_id}" is duplicated`;
 
-    if (!clean_up_task_id)
-        clean_up_task_id = start_clean_up_task()
-
-    let page = window.open(window.location.href);
     subpages[page_id] = {page: page, task_id: task_id}
 
     // the `_pywebio_page` will be resolved in new opened page in `SubPageSession.start_session()`
     // @ts-ignore
-    page._pywebio_page = new LazyPromise()
+    page._pywebio_page = new LazyPromise();
+    // @ts-ignore
+    page._pywebio_master_session = state.CurrentSession;
+    // @ts-ignore
+    page._pywebio_add_page = AddPage;
+
 
     // this event is not reliably fired by browsers
     // https://developer.mozilla.org/en-US/docs/Web/API/Window/pagehide_event#usage_notes
@@ -62,6 +72,9 @@ export function OpenPage(page_id: string, task_id: string) {
                 on_page_lost(page_id)
         }, 100)
     });
+
+    if (!clean_up_task_id)
+        clean_up_task_id = start_clean_up_task()
 }
 
 export function ClosePage(page_id: string) {
