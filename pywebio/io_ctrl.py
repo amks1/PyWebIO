@@ -179,7 +179,7 @@ class OutputList(UserList):
     def __del__(self):
         """返回值没有被变量接收时的操作：顺序输出其持有的内容"""
         for o in self.data:
-            o.__del__()
+            o.__del__()  # lgtm [py/explicit-call-to-delete]
 
 
 def safely_destruct_output_when_exp(content_param):
@@ -261,6 +261,9 @@ def single_input(item_spec, valid_func, preprocess_func, onchange_func):
                                preprocess_funcs={name: preprocess_func},
                                item_valid_funcs={name: valid_func},
                                onchange_funcs={name: onchange_func})
+
+    if not data:  # form cancel
+        return None
     return data[name]
 
 
@@ -309,14 +312,21 @@ def trigger_onchange(event_data, onchange_funcs):
     name = event_data['name']
     onchange_func = onchange_funcs[name]
 
+    # save current input name to session, so that the `input_update()` function can get it
     task_id = get_current_task_id()
-    get_current_session().internal_save['onchange_trigger-' + task_id] = name  # used in `pywebio.input.input_update()`
+    onchange_trigger_key = 'onchange_trigger-' + task_id
+    previous_name = get_current_session().internal_save.get(onchange_trigger_key)
+    get_current_session().internal_save[onchange_trigger_key] = name  # used in `pywebio.input.input_update()`
+
     try:
         onchange_func(event_data['value'])
     except Exception as e:
         logger.warning('Get %r in onchange function for name:"%s"', e, name)
     finally:
-        del get_current_session().internal_save['onchange_trigger-' + task_id]
+        if previous_name is None:
+            get_current_session().internal_save.pop(onchange_trigger_key, None)
+        else:
+            get_current_session().internal_save[onchange_trigger_key] = previous_name
 
 
 @chose_impl

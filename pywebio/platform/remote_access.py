@@ -49,7 +49,7 @@ def remote_access_service(local_port=8080, server='app.pywebio.online', server_p
 
     global _ssh_process
 
-    cmd = "ssh -oStrictHostKeyChecking=no -R 80:localhost:%s -p %s %s -- --output json" % (
+    cmd = "ssh -oStrictHostKeyChecking=no -R 80:127.0.0.1:%s -p %s %s -- --output json" % (
         local_port, server_port, server)
     args = shlex.split(cmd)
     logger.debug('remote access service command: %s', cmd)
@@ -111,7 +111,8 @@ def start_remote_access_service_(**kwargs):
 
 def start_remote_access_service(**kwargs):
     if not shutil.which("ssh"):
-        return logging.error("No ssh client found, remote access service can't start.")
+        logging.error("No ssh client found, remote access service can't start.")
+        return
 
     server = os.environ.get('PYWEBIO_REMOTE_ACCESS', 'app.pywebio.online:1022')
     if ':' not in server:
@@ -130,7 +131,7 @@ if __name__ == '__main__':
 
     logging.basicConfig(level=logging.DEBUG)
 
-    parser = argparse.ArgumentParser(description="localhost.run Remote Access service")
+    parser = argparse.ArgumentParser(description="Remote Access service")
     parser.add_argument("--local-port", help="the local port to connect the tunnel to", type=int, default=8080)
     parser.add_argument("--server", help="the local port to connect the tunnel to", type=str,
                         default='app.pywebio.online')

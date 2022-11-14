@@ -657,6 +657,10 @@ def put_table(tdata, header=None, scope=None, position=OutputPosition.BOTTOM) ->
         tdata = [list(i) for i in tdata]  # copy data
 
     if header:
+        # when tdata is empty, header will not be process
+        # see https://github.com/pywebio/PyWebIO/issues/453
+        if isinstance(header[0], (list, tuple)):
+            header = [h[0] for h in header]
         tdata = [header, *tdata]
 
     span = {}
@@ -1595,7 +1599,7 @@ def popup(title, content=None, size=PopupSize.NORMAL, implicit_close=True, closa
 
     :param str title: The title of the popup.
     :type content: list/str/put_xxx()
-    :param content: The content of the popup can be a string, the put_xxx() calls , or a list of them.
+    :param content: The content of the popup. Can be a string, the put_xxx() calls, or a list of them.
     :param str size: The size of popup window. Available values are: ``'large'``, ``'normal'`` and ``'small'``.
     :param bool implicit_close: If enabled, the popup can be closed implicitly by clicking the content outside
         the popup window or pressing the ``Esc`` key. Default is ``False``.
@@ -1761,8 +1765,8 @@ def use_scope(name=None, clear=False, **kwargs):
 
     def before_enter():
         if create_scope:
-            if_exist = 'clear' if clear else None
-            set_scope(name, if_exist=if_exist, **scope_params)
+            if_exist = 'blank' if clear else None
+            set_scope(name, if_exist=if_exist, **scope_params)  # lock the height of the scope and clear its content
 
     return use_scope_(name=name, before_enter=before_enter)
 
@@ -1783,7 +1787,8 @@ class use_scope_:
         If this method returns True, it means that the context manager can handle the exception,
         so that the with statement terminates the propagation of the exception
         """
-        get_current_session().pop_scope()
+        scope = get_current_session().pop_scope()
+        send_msg('output_ctl', dict(loose=scope2dom(scope)))  # revoke lock the height of the scope
         return False  # Propagate Exception
 
     def __call__(self, func):
