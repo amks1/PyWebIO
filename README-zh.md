@@ -22,17 +22,11 @@
         <img src="https://img.shields.io/badge/python->%3D%203.5.2-brightgreen" alt="Python Version">
     </a>
     <br/>
-    <a href="https://lgtm.com/projects/g/wang0618/PyWebIO/context:python">
-        <img src="https://img.shields.io/lgtm/grade/python/github/wang0618/PyWebIO.svg?colorB=brightgreen" alt="Python code quality">
-    </a>
-    <a href="https://lgtm.com/projects/g/wang0618/PyWebIO/context:javascript">
-        <img src="https://img.shields.io/lgtm/grade/javascript/github/wang0618/PyWebIO.svg?colorB=brightgreen" alt="Javascript code quality">
-    </a>
     <a href="https://github.com/wang0618/PyWebIO/blob/master/LICENSE">
         <img src="https://img.shields.io/github/license/wang0618/PyWebIO.svg" alt="License">
     </a>
     <br/>
-    <a href="https://pywebio.readthedocs.io/zh_CN/latest/">[Document]</a> | <a href="http://pywebio-demos.pywebio.online/">[Demos]</a> | <a href="https://github.com/wang0618/PyWebIO/wiki/%5B%E4%B8%AD%E6%96%87%5D-Why-PyWebIO%3F">[Why PyWebIO?]</a>
+    <a href="https://pywebio.readthedocs.io/zh_CN/latest/">[Document]</a> | <a href="http://pywebio-demos.pywebio.online/">[Demos]</a> | <a href="https://play.pywebio.online">[Playground]</a> | <a href="https://github.com/wang0618/PyWebIO/wiki/%5B%E4%B8%AD%E6%96%87%5D-Why-PyWebIO%3F">[Why PyWebIO?]</a>
 </p>
 
 [English](README.md) | [中文](README-zh.md)
@@ -65,7 +59,7 @@ pip3 install -U pywebio
 
 开发版安装:
 ```bash
-pip3 install -U https://code.aliyun.com/wang0618/pywebio/repository/archive.zip
+pip3 install -U https://github.com/pywebio/PyWebIO/archive/dev-release.zip
 ```
 
 **系统要求**: PyWebIO要求 Python 版本在 3.5.2 及以上
@@ -155,6 +149,7 @@ if __name__ == "__main__":
  - [基本demo](http://pywebio-demos.pywebio.online/) : 包含PyWebIO基本输入输出演示和使用PyWebIO编写的小应用
  - [数据可视化demo](http://pywebio-charts.pywebio.online/) : 使用 bokeh、plotly、pyecharts 等库进行数据可视化
 
-## Document
+## Links
 
-使用手册和实现文档见 [https://pywebio.readthedocs.io](https://pywebio.readthedocs.io/zh_CN/latest/)
+* 使用手册和实现文档见 [pywebio.readthedocs.io](https://pywebio.readthedocs.io/zh_CN/latest/)
+* [PyWebIO Playground](https://play.pywebio.online/): 在线编辑、运行和分享PyWebIO代码

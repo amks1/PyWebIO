@@ -70,7 +70,6 @@ Since the pin widget functions is not blocking,
 Pin widgets
 ------------------
 Each pin widget function corresponds to an input function of :doc:`input <./input>` module.
-(For performance reasons, no pin widget for `file_upload() <pywebio.input.file_upload>` input function)
 
 The function of pin widget supports most of the parameters of the corresponding input function.
 Here lists the difference between the two in parameters:
@@ -88,6 +87,7 @@ Here lists the difference between the two in parameters:
 .. autofunction:: put_radio
 .. autofunction:: put_slider
 .. autofunction:: put_actions
+.. autofunction:: put_file_upload
 
 Pin utils
 ------------------
@@ -97,7 +97,7 @@ Pin utils
 
     You can use attribute or key index of ``pin`` object to get the current value of a pin widget.
     By default, when accessing the value of a widget that does not exist, it returns ``None`` instead of
-    throwing an exception.
+    throwing an exception. You can enable the error raising by ``pin.use_strict()`` method.
 
     You can also use the ``pin`` object to set the value of pin widget:
 
@@ -125,18 +125,19 @@ Pin utils
 """
 
 import string
+from typing import Any, Callable, Dict, List, Optional, Tuple, Union
 
 from pywebio.input import parse_input_update_spec
-from pywebio.output import OutputPosition, Output
-from pywebio.output import _get_output_spec
-from .io_ctrl import send_msg, single_input_kwargs, output_register_callback
-from .session import next_client_event, chose_impl
+from pywebio.output import Output, OutputPosition, _get_output_spec
+
+from .io_ctrl import output_register_callback, send_msg, single_input_kwargs
+from .session import chose_impl, next_client_event
 from .utils import check_dom_name_value
 
 _pin_name_chars = set(string.ascii_letters + string.digits + '_-')
 
 __all__ = ['put_input', 'put_textarea', 'put_select', 'put_checkbox', 'put_radio', 'put_slider', 'put_actions',
-           'pin', 'pin_update', 'pin_wait_change', 'pin_on_change']
+           'put_file_upload', 'pin', 'pin_update', 'pin_wait_change', 'pin_on_change']
 
 
 def _pin_output(single_input_return, scope, position):
@@ -145,8 +146,9 @@ def _pin_output(single_input_return, scope, position):
     return Output(spec)
 
 
-def put_input(name, type='text', *, label='', value=None, placeholder=None, readonly=None, datalist=None,
-              help_text=None, scope=None, position=OutputPosition.BOTTOM) -> Output:
+def put_input(name: str, type: str = 'text', *, label: str = '', value: str = None, placeholder: str = None,
+              readonly: bool = None, datalist: List[str] = None, help_text: str = None, scope: str = None,
+              position: int = OutputPosition.BOTTOM) -> Output:
     """Output an input widget. Refer to: `pywebio.input.input()`"""
     from pywebio.input import input
     check_dom_name_value(name, 'pin `name`')
@@ -155,8 +157,9 @@ def put_input(name, type='text', *, label='', value=None, placeholder=None, read
     return _pin_output(single_input_return, scope, position)
 
 
-def put_textarea(name, *, label='', rows=6, code=None, maxlength=None, minlength=None, value=None, placeholder=None,
-                 readonly=None, help_text=None, scope=None, position=OutputPosition.BOTTOM) -> Output:
+def put_textarea(name: str, *, label: str = '', rows: int = 6, code: Union[bool, Dict] = None, maxlength: int = None,
+                 minlength: int = None, value: str = None, placeholder: str = None, readonly: bool = None,
+                 help_text: str = None, scope: str = None, position: int = OutputPosition.BOTTOM) -> Output:
     """Output a textarea widget. Refer to: `pywebio.input.textarea()`"""
     from pywebio.input import textarea
     check_dom_name_value(name, 'pin `name`')
@@ -166,18 +169,27 @@ def put_textarea(name, *, label='', rows=6, code=None, maxlength=None, minlength
     return _pin_output(single_input_return, scope, position)
 
 
-def put_select(name, options=None, *, label='', multiple=None, value=None, help_text=None,
-               scope=None, position=OutputPosition.BOTTOM) -> Output:
-    """Output a select widget. Refer to: `pywebio.input.select()`"""
+def put_select(name: str, options: List[Union[Dict[str, Any], Tuple, List, str]] = None, *, label: str = '',
+               multiple: bool = None, value: Union[List, str] = None, native: bool = None, help_text: str = None,
+               scope: str = None, position: int = OutputPosition.BOTTOM) -> Output:
+    """Output a select widget. Refer to: `pywebio.input.select()`
+
+    .. note::
+
+        Unlike `pywebio.input.select()`, when ``multiple=True`` and the user is using PC/macOS, `put_select()` will use
+        `bootstrap-select <https://github.com/snapappointments/bootstrap-select>`_ by default. Setting
+        ``native=True`` will force PyWebIO to use native select component on all platforms and vice versa.
+    """
     from pywebio.input import select
     check_dom_name_value(name, 'pin `name`')
     single_input_return = select(name=name, options=options, label=label, multiple=multiple,
-                                 value=value, help_text=help_text)
+                                 value=value, help_text=help_text, native=native)
     return _pin_output(single_input_return, scope, position)
 
 
-def put_checkbox(name, options=None, *, label='', inline=None, value=None, help_text=None,
-                 scope=None, position=OutputPosition.BOTTOM) -> Output:
+def put_checkbox(name: str, options: List[Union[Dict[str, Any], Tuple, List, str]] = None, *, label: str = '',
+                 inline: bool = None, value: List = None, help_text: str = None, scope: str = None,
+                 position: int = OutputPosition.BOTTOM) -> Output:
     """Output a checkbox widget. Refer to: `pywebio.input.checkbox()`"""
     from pywebio.input import checkbox
     check_dom_name_value(name, 'pin `name`')
@@ -186,8 +198,9 @@ def put_checkbox(name, options=None, *, label='', inline=None, value=None, help_
     return _pin_output(single_input_return, scope, position)
 
 
-def put_radio(name, options=None, *, label='', inline=None, value=None, help_text=None,
-              scope=None, position=OutputPosition.BOTTOM) -> Output:
+def put_radio(name: str, options: List[Union[Dict[str, Any], Tuple, List, str]] = None, *, label: str = '',
+              inline: bool = None, value: str = None, help_text: str = None, scope: str = None,
+              position: int = OutputPosition.BOTTOM) -> Output:
     """Output a radio widget. Refer to: `pywebio.input.radio()`"""
     from pywebio.input import radio
     check_dom_name_value(name, 'pin `name`')
@@ -196,8 +209,9 @@ def put_radio(name, options=None, *, label='', inline=None, value=None, help_tex
     return _pin_output(single_input_return, scope, position)
 
 
-def put_slider(name, *, label='', value=0, min_value=0, max_value=100, step=1, required=None, help_text=None,
-               scope=None, position=OutputPosition.BOTTOM) -> Output:
+def put_slider(name: str, *, label: str = '', value: Union[int, float] = 0, min_value: Union[int, float] = 0,
+               max_value: Union[int, float] = 100, step: int = 1, required: bool = None, help_text: str = None,
+               scope: str = None, position: int = OutputPosition.BOTTOM) -> Output:
     """Output a slide widget. Refer to: `pywebio.input.slider()`"""
     from pywebio.input import slider
     check_dom_name_value(name, 'pin `name`')
@@ -206,8 +220,8 @@ def put_slider(name, *, label='', value=0, min_value=0, max_value=100, step=1, r
     return _pin_output(single_input_return, scope, position)
 
 
-def put_actions(name, *, label='', buttons=None, help_text=None,
-                scope=None, position=OutputPosition.BOTTOM) -> Output:
+def put_actions(name: str, *, label: str = '', buttons: List[Union[Dict[str, Any], Tuple, List, str]] = None,
+                help_text: str = None, scope: str = None, position: int = OutputPosition.BOTTOM) -> Output:
     """Output a group of action button. Refer to: `pywebio.input.actions()`
 
     Unlike the ``actions()``, ``put_actions()`` won't submit any form, it will only set the value of the pin widget.
@@ -222,6 +236,17 @@ def put_actions(name, *, label='', buttons=None, help_text=None,
     for btn in input_kwargs['item_spec']['buttons']:
         assert btn['type'] == 'submit', "The `put_actions()` pin widget only accept 'submit' type button."
     return _pin_output(input_kwargs, scope, position)
+
+
+def put_file_upload(name: str, *, label: str = '', accept: Union[List, str] = None, placeholder: str = 'Choose file',
+                    multiple: bool = False, max_size: Union[int, str] = 0, max_total_size: Union[int, str] = 0,
+                    help_text: str = None, scope: str = None, position: int = OutputPosition.BOTTOM) -> Output:
+    """Output a file uploading widget. Refer to: `pywebio.input.file_upload()`"""
+    from pywebio.input import file_upload
+    check_dom_name_value(name, 'pin `name`')
+    single_input_return = file_upload(label=label, accept=accept, name=name, placeholder=placeholder, multiple=multiple,
+                                      max_size=max_size, max_total_size=max_total_size, help_text=help_text)
+    return _pin_output(single_input_return, scope, position)
 
 
 @chose_impl
@@ -250,17 +275,17 @@ class Pin_:
         """
         object.__setattr__(self, '_strict', True)
 
-    def __getattr__(self, name):
+    def __getattr__(self, name: str):
         """__getattr__ is only invoked if the attribute wasn't found the usual ways"""
         if name.startswith('__'):
             raise AttributeError('Pin object has no attribute %r' % name)
         return self.__getitem__(name)
 
-    def __getitem__(self, name):
+    def __getitem__(self, name: str):
         check_dom_name_value(name, 'pin `name`')
         return get_pin_value(name, self._strict)
 
-    def __setattr__(self, name, value):
+    def __setattr__(self, name: str, value):
         """
         __setattr__ will be invoked regardless of whether the attribute be found
         """
@@ -268,7 +293,7 @@ class Pin_:
         check_dom_name_value(name, 'pin `name`')
         self.__setitem__(name, value)
 
-    def __setitem__(self, name, value):
+    def __setitem__(self, name: str, value):
         send_msg('pin_update', spec=dict(name=name, attributes={"value": value}))
 
 
@@ -276,7 +301,7 @@ class Pin_:
 pin = Pin_()
 
 
-def pin_wait_change(*names, timeout=None):
+def pin_wait_change(*names, timeout: Optional[int] = None):
     """``pin_wait_change()`` listens to a list of pin widgets, when the value of any widgets changes,
     the function returns with the name and value of the changed widget.
 
@@ -318,7 +343,7 @@ def pin_wait_change(*names, timeout=None):
     return get_client_val()
 
 
-def pin_update(name, **spec):
+def pin_update(name: str, **spec):
     """Update attributes of pin widgets.
 
     :param str name: The ``name`` of the target input widget.
@@ -330,7 +355,7 @@ def pin_update(name, **spec):
     send_msg('pin_update', spec=dict(name=name, attributes=attributes))
 
 
-def pin_on_change(name, onchange=None, clear=False, init_run=False, **callback_options):
+def pin_on_change(name: str, onchange: Callable[[Any], None] = None, clear: bool = False, init_run: bool = False, **callback_options):
     """
     Bind a callback function to pin widget, the function will be called when user change the value of the pin widget.
 
@@ -351,7 +376,8 @@ def pin_on_change(name, onchange=None, clear=False, init_run=False, **callback_o
     """
     assert not (onchange is None and clear is False), "When `onchange` is `None`, `clear` must be `True`"
     if onchange is not None:
-        callback_id = output_register_callback(onchange, **callback_options)
+        callback = lambda data: onchange(data['value'])
+        callback_id = output_register_callback(callback, **callback_options)
         if init_run:
             onchange(pin[name])
     else:

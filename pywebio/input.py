@@ -76,11 +76,12 @@ import copy
 import logging
 import os.path
 from collections.abc import Mapping
+from typing import Any, Callable, Dict, List, Optional, Tuple, Union
 
-from .io_ctrl import single_input, input_control, output_register_callback, send_msg, single_input_kwargs
+from .io_ctrl import input_control, output_register_callback, send_msg, single_input, single_input_kwargs
 from .platform import page as platform_setting
 from .session import get_current_session, get_current_task_id
-from .utils import Setter, parse_file_size, check_dom_name_value
+from .utils import Setter, check_dom_name_value, parse_file_size
 
 logger = logging.getLogger(__name__)
 
@@ -93,15 +94,17 @@ DATE = "date"
 TIME = "time"
 COLOR = "color"
 DATETIME_LOCAL = "datetime-local"
+DATETIME = DATETIME_LOCAL
 
 CHECKBOX = 'checkbox'
 RADIO = 'radio'
 SELECT = 'select'
 TEXTAREA = 'textarea'
 
-__all__ = ['TEXT', 'NUMBER', 'FLOAT', 'PASSWORD', 'URL', 'DATE', 'TIME', 'COLOR', 'DATETIME_LOCAL', 'input', 'textarea',
-           'select',
-           'checkbox', 'radio', 'actions', 'file_upload', 'slider', 'input_group', 'input_update']
+__all__ = ['TEXT', 'NUMBER', 'FLOAT', 'PASSWORD', 'URL', 'DATE',
+           'TIME', 'COLOR', 'DATETIME_LOCAL', 'DATETIME', 'input', 'textarea',
+           'select', 'checkbox', 'radio', 'actions', 'file_upload',
+           'slider', 'input_group', 'input_update']
 
 
 def _parse_args(kwargs, excludes=()):
@@ -131,20 +134,25 @@ def _parse_args(kwargs, excludes=()):
     return kwargs, valid_func, onchange_func
 
 
-def input(label='', type=TEXT, *, validate=None, name=None, value=None, action=None, onchange=None, placeholder=None,
-          required=None, readonly=None, datalist=None, help_text=None, **other_html_attrs):
+def input(label: str = '', type: str = TEXT, *, validate: Callable[[Any], Optional[str]] = None, name: str = None,
+          value: Union[str, int] = None,
+          action: Tuple[str, Callable[[Callable], None]] = None, onchange: Callable[[Any], None] = None,
+          placeholder: str = None, required: bool = None,
+          readonly: bool = None, datalist: List[str] = None, help_text: str = None, **other_html_attrs):
     r"""Text input
 
     :param str label: Label of input field.
-    :param str type: Input type. Currently, supported types are：`TEXT` , `NUMBER` , `FLOAT` , `PASSWORD` , `URL` , `DATE` , `TIME`, `COLOR`, `DATETIME_LOCAL`
+    :param str type: Input type. Currently, supported types are：`TEXT` , `NUMBER` , `FLOAT` , `PASSWORD` , `URL` , `DATE` , `TIME`, `DATETIME`, `COLOR`
 
-       Note that `DATE` and `TIME` type are not supported on some browsers,
-       for details see https://developer.mozilla.org/en-US/docs/Web/HTML/Element/input#Browser_compatibility
+       The value of `DATE` , `TIME`, `DATETIME` type is a string in the format of `YYYY-MM-DD` , `HH:MM:SS` , `YYYY-MM-DDTHH:MM` respectively
+       (`%Y-%m-%d`, `%H:%M:%S`, `%Y-%m-%dT%H:%M` in python `strptime() <https://docs.python.org/3/library/datetime.html#strftime-and-strptime-behavior>`_ format).
     :param callable validate: Input value validation function. If provided, the validation function will be called when
         user completes the input field or submits the form.
 
         ``validate`` receives the input value as a parameter. When the input value is valid, it returns ``None``.
-        When the input value is invalid, it returns an error message string. For example:
+        When the input value is invalid, it returns an error message string.
+
+        For example:
 
         .. exportable-codeblock::
             :name: input-valid-func
@@ -260,8 +268,12 @@ def input(label='', type=TEXT, *, validate=None, name=None, value=None, action=N
     return single_input(item_spec, valid_func, preprocess_func, onchange_func)
 
 
-def textarea(label='', *, rows=6, code=None, maxlength=None, minlength=None, validate=None, name=None, value=None,
-             onchange=None, placeholder=None, required=None, readonly=None, help_text=None, **other_html_attrs):
+def textarea(label: str = '', *, rows: int = 6, code: Union[bool, Dict] = None, maxlength: int = None,
+             minlength: int = None,
+             validate: Callable[[Any], Optional[str]] = None, name: str = None, value: str = None,
+             onchange: Callable[[Any], None] = None,
+             placeholder: str = None, required: bool = None, readonly: bool = None, help_text: str = None,
+             **other_html_attrs):
     r"""Text input area (multi-line text input)
 
     :param int rows: The number of visible text lines for the input area. Scroll bar will be used when content exceeds.
@@ -326,8 +338,10 @@ def _set_options_selected(options, value):
     return options
 
 
-def select(label='', options=None, *, multiple=None, validate=None, name=None, value=None, onchange=None, required=None,
-           help_text=None, **other_html_attrs):
+def select(label: str = '', options: List[Union[Dict[str, Any], Tuple, List, str]] = None, *, multiple: bool = None,
+           validate: Callable[[Any], Optional[str]] = None, name: str = None, value: Union[List, str] = None,
+           onchange: Callable[[Any], None] = None, native: bool = True, required: bool = None, help_text: str = None,
+           **other_html_attrs):
     r"""Drop-down selection
 
     By default, only one option can be selected at a time, you can set ``multiple`` parameter to enable multiple selection.
@@ -356,6 +370,8 @@ def select(label='', options=None, *, multiple=None, validate=None, name=None, v
        You can also set the initial selected option by setting the ``selected`` field in the ``options`` list item.
     :type value: list or str
     :param bool required: Whether to select at least one item, only available when ``multiple=True``
+    :param bool native: Using browser's native select component rather than
+        `bootstrap-select <https://github.com/snapappointments/bootstrap-select>`_. This is the default behavior.
     :param - label, validate, name, onchange, help_text, other_html_attrs: Those arguments have the same meaning as for `input()`
     :return: If ``multiple=True``, return a list of the values in the ``options`` selected by the user;
         otherwise, return the single value selected by the user.
@@ -371,8 +387,10 @@ def select(label='', options=None, *, multiple=None, validate=None, name=None, v
     return single_input(item_spec, valid_func=valid_func, preprocess_func=lambda d: d, onchange_func=onchange_func)
 
 
-def checkbox(label='', options=None, *, inline=None, validate=None, name=None, value=None, onchange=None,
-             help_text=None, **other_html_attrs):
+def checkbox(label: str = '', options: List[Union[Dict[str, Any], Tuple, List, str]] = None, *, inline: bool = None,
+             validate: Callable[[Any], Optional[str]] = None,
+             name: str = None, value: List = None, onchange: Callable[[Any], None] = None, help_text: str = None,
+             **other_html_attrs):
     r"""A group of check box that allowing single values to be selected/deselected.
 
     :param list options: List of options. The format is the same as the ``options`` parameter of the `select()` function
@@ -393,8 +411,10 @@ def checkbox(label='', options=None, *, inline=None, validate=None, name=None, v
     return single_input(item_spec, valid_func, lambda d: d, onchange_func)
 
 
-def radio(label='', options=None, *, inline=None, validate=None, name=None, value=None, onchange=None, required=None,
-          help_text=None, **other_html_attrs):
+def radio(label: str = '', options: List[Union[Dict[str, Any], Tuple, List, str]] = None, *, inline: bool = None,
+          validate: Callable[[Any], Optional[str]] = None,
+          name: str = None, value: str = None, onchange: Callable[[Any], None] = None, required: bool = None,
+          help_text: str = None, **other_html_attrs):
     r"""A group of radio button. Only a single button can be selected.
 
     :param list options: List of options. The format is the same as the ``options`` parameter of the `select()` function
@@ -457,7 +477,8 @@ def _parse_action_buttons(buttons):
     return act_res
 
 
-def actions(label='', buttons=None, name=None, help_text=None):
+def actions(label: str = '', buttons: List[Union[Dict[str, Any], Tuple, List, str]] = None, name: str = None,
+            help_text: str = None):
     r"""Actions selection
 
     It is displayed as a group of buttons on the page. After the user clicks the button of it,
@@ -557,8 +578,9 @@ def actions(label='', buttons=None, name=None, help_text=None):
     return single_input(item_spec, valid_func, lambda d: d, onchange_func)
 
 
-def file_upload(label='', accept=None, name=None, placeholder='Choose file', multiple=False, max_size=0,
-                max_total_size=0, required=None, help_text=None, **other_html_attrs):
+def file_upload(label: str = '', accept: Union[List, str] = None, name: str = None, placeholder: str = 'Choose file',
+                multiple: bool = False, max_size: Union[int, str] = 0, max_total_size: Union[int, str] = 0,
+                required: bool = None, help_text: str = None, **other_html_attrs):
     r"""File uploading
 
     :param accept: Single value or list, indicating acceptable file types. The available formats of file types are:
@@ -590,14 +612,14 @@ def file_upload(label='', accept=None, name=None, placeholder='Choose file', mul
             'mime_type': MIME type of the file,
             'last_modified': Last modified time (timestamp) of the file
         }
-       
+
        If there is no file uploaded, return ``None``.
 
        When ``multiple=True``, a list is returned. The format of the list item is the same as the return value when ``multiple=False`` above.
        If the user does not upload a file, an empty list is returned.
 
     .. note::
-    
+
         If uploading large files, please pay attention to the file upload size limit setting of the web framework.
         When using :func:`start_server() <pywebio.platform.tornado.start_server>` or
         :func:`path_deploy() <pywebio.platform.path_deploy>` to start the PyWebIO application,
@@ -627,20 +649,12 @@ def file_upload(label='', accept=None, name=None, placeholder='Choose file', mul
             raise ValueError('The `max_size` and `max_total_size` value can not exceed the backend payload size limit. '
                              'Please increase the `max_total_size` of `start_server()`/`path_deploy()`')
 
-    def read_file(data):
-        for file in data:
-            # Security fix: to avoid interpreting file name as path
-            file['filename'] = os.path.basename(file['filename'])
-
-        if not multiple:
-            return data[0] if len(data) >= 1 else None
-        return data
-
-    return single_input(item_spec, valid_func, read_file, onchange_func)
+    return single_input(item_spec, valid_func, lambda d: d, onchange_func)
 
 
-def slider(label='', *, name=None, value=0, min_value=0, max_value=100, step=1, validate=None, onchange=None,
-           required=None, help_text=None, **other_html_attrs):
+def slider(label: str = '', *, name: str = None, value: Union[int, float] = 0, min_value: Union[int, float] = 0,
+           max_value: Union[int, float] = 100, step: int = 1, validate: Callable[[Any], Optional[str]] = None,
+           onchange: Callable[[Any], None] = None, required: bool = None, help_text: str = None, **other_html_attrs):
     r"""Range input.
 
     :param int/float value: The initial value of the slider.
@@ -661,7 +675,8 @@ def slider(label='', *, name=None, value=0, min_value=0, max_value=100, step=1, 
     return single_input(item_spec, valid_func, lambda d: d, onchange_func)
 
 
-def input_group(label='', inputs=None, validate=None, cancelable=False):
+def input_group(label: str = '', inputs: List = None, validate: Callable[[Dict], Optional[Tuple[str, str]]] = None,
+                cancelable: bool = False):
     r"""Input group. Request a set of inputs from the user at once.
 
     :param str label: Label of input group.
@@ -747,7 +762,7 @@ def parse_input_update_spec(spec):
     return attributes
 
 
-def input_update(name=None, **spec):
+def input_update(name: str = None, **spec):
     """Update attributes of input field.
     This function can only be called in ``onchange`` callback of input functions.
 

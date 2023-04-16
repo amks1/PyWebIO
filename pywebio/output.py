@@ -42,13 +42,18 @@ Functions list
 |                    +---------------------------+------------------------------------------------------------+
 |                    | `put_link`                | Output link                                                |
 |                    +---------------------------+------------------------------------------------------------+
-|                    | `put_processbar`          | Output a process bar                                       |
+|                    | `put_progressbar`         | Output a progress bar                                      |
 |                    +---------------------------+------------------------------------------------------------+
 |                    | `put_loading`:sup:`†`     | Output loading prompt                                      |
 |                    +---------------------------+------------------------------------------------------------+
 |                    | `put_code`                | Output code block                                          |
 |                    +---------------------------+------------------------------------------------------------+
 |                    | `put_table`:sup:`*`       | Output table                                               |
+|                    +---------------------------+------------------------------------------------------------+
+|                    | | `put_datatable`         | Output and update data table                               |
+|                    | | `datatable_update`      |                                                            |
+|                    | | `datatable_insert`      |                                                            |
+|                    | | `datatable_remove`      |                                                            |
 |                    +---------------------------+------------------------------------------------------------+
 |                    | | `put_button`            | Output button and bind click event                         |
 |                    | | `put_buttons`           |                                                            |
@@ -173,8 +178,8 @@ index equal ``position``:
 
 .. autofunction:: put_html
 .. autofunction:: put_link
-.. autofunction:: put_processbar
-.. autofunction:: set_processbar
+.. autofunction:: put_progressbar
+.. autofunction:: set_progressbar
 .. autofunction:: put_loading
 .. autofunction:: put_code
 .. autofunction:: put_table
@@ -186,6 +191,10 @@ index equal ``position``:
 .. autofunction:: put_tabs
 .. autofunction:: put_collapse
 .. autofunction:: put_scrollable
+.. autofunction:: put_datatable
+.. autofunction:: datatable_update
+.. autofunction:: datatable_insert
+.. autofunction:: datatable_remove
 .. autofunction:: put_widget
 
 Other Interactions
@@ -208,14 +217,23 @@ Layout and Style
 import copy
 import html
 import io
+import json
 import logging
 import string
 from base64 import b64encode
 from collections.abc import Mapping, Sequence
 from functools import wraps
-from typing import Union
+from typing import (
+    Any, Callable, Dict, List, Tuple, Union, Sequence as SequenceType, Mapping as MappingType
+)
 
-from .io_ctrl import output_register_callback, send_msg, Output, safely_destruct_output_when_exp, OutputList, scope2dom
+try:
+    from typing import Literal  # added in Python 3.8
+except ImportError:
+    pass
+
+from .io_ctrl import output_register_callback, send_msg, Output, \
+    safely_destruct_output_when_exp, OutputList, scope2dom
 from .session import get_current_session, download
 from .utils import random_str, iscoroutinefunction, check_dom_name_value
 
@@ -226,12 +244,13 @@ except ImportError:
 
 logger = logging.getLogger(__name__)
 
-__all__ = ['Position', 'remove', 'scroll_to', 'put_tabs', 'put_scope',
+__all__ = ['Position', 'OutputPosition', 'remove', 'scroll_to', 'put_tabs', 'put_scope',
            'put_text', 'put_html', 'put_code', 'put_markdown', 'use_scope', 'set_scope', 'clear', 'remove',
            'put_table', 'put_buttons', 'put_image', 'put_file', 'PopupSize', 'popup', 'put_button',
            'close_popup', 'put_widget', 'put_collapse', 'put_link', 'put_scrollable', 'style', 'put_column',
-           'put_row', 'put_grid', 'span', 'put_processbar', 'set_processbar', 'put_loading',
-           'output', 'toast', 'get_scope', 'put_info', 'put_error', 'put_warning', 'put_success']
+           'put_row', 'put_grid', 'span', 'put_progressbar', 'set_progressbar', 'put_processbar', 'set_processbar',
+           'put_loading', 'output', 'toast', 'get_scope', 'put_info', 'put_error', 'put_warning', 'put_success',
+           'put_datatable', 'datatable_update', 'datatable_insert', 'datatable_remove', 'JSFunction']
 
 
 # popup size
@@ -256,11 +275,11 @@ class OutputPosition:
 _scope_name_allowed_chars = set(string.ascii_letters + string.digits + '_-')
 
 
-def set_scope(name, container_scope=None, position=OutputPosition.BOTTOM, if_exist=None):
+def set_scope(name: str, container_scope: str = None, position: int = OutputPosition.BOTTOM, if_exist: str = None):
     """Create a new scope.
 
     :param str name: scope name
-    :param str container_scope: Specify the parent scope of this scope. 
+    :param str container_scope: Specify the parent scope of this scope.
         When the scope doesn't exist, no operation is performed.
     :param int position: The location where this scope is created in the parent scope.
        (see :ref:`Scope related parameters <scope_param>`)
@@ -280,7 +299,7 @@ def set_scope(name, container_scope=None, position=OutputPosition.BOTTOM, if_exi
                                 position=position, if_exist=if_exist))
 
 
-def get_scope(stack_idx=-1):
+def get_scope(stack_idx: int = -1):
     """Get the scope name of runtime scope stack
 
     :param int stack_idx: The index of the runtime scope stack. Default is -1.
@@ -297,7 +316,7 @@ def get_scope(stack_idx=-1):
         return None
 
 
-def clear(scope=None):
+def clear(scope: str = None):
     """Clear the content of the specified scope
 
     :param str scope: Target scope name. Default is the current scope.
@@ -307,7 +326,7 @@ def clear(scope=None):
     send_msg('output_ctl', dict(clear=scope2dom(scope)))
 
 
-def remove(scope=None):
+def remove(scope: str = None):
     """Remove the specified scope
 
     :param str scope: Target scope name. Default is the current scope.
@@ -318,7 +337,7 @@ def remove(scope=None):
     send_msg('output_ctl', dict(remove=scope2dom(scope)))
 
 
-def scroll_to(scope=None, position=Position.TOP):
+def scroll_to(scope: str = None, position: str = Position.TOP):
     """
     Scroll the page to the specified scope
 
@@ -361,7 +380,8 @@ def _get_output_spec(type, scope, position, **other_spec):
     return spec
 
 
-def put_text(*texts, sep=' ', inline=False, scope=None, position=OutputPosition.BOTTOM) -> Output:
+def put_text(*texts: Any, sep: str = ' ', inline: bool = False, scope: str = None,
+             position: int = OutputPosition.BOTTOM) -> Output:
     """
     Output plain text
 
@@ -397,7 +417,8 @@ def _put_message(color, contents, closable=False, scope=None, position=OutputPos
                       scope=scope, position=position).enable_context_manager()
 
 
-def put_info(*contents, closable=False, scope=None, position=OutputPosition.BOTTOM) -> Output:
+def put_info(*contents: Any, closable: bool = False, scope: str = None,
+             position: int = OutputPosition.BOTTOM) -> Output:
     """Output information message.
 
     :param contents: Message contents.
@@ -410,7 +431,8 @@ def put_info(*contents, closable=False, scope=None, position=OutputPosition.BOTT
     return _put_message(color='info', contents=contents, closable=closable, scope=scope, position=position)
 
 
-def put_success(*contents, closable=False, scope=None, position=OutputPosition.BOTTOM) -> Output:
+def put_success(*contents: Any, closable: bool = False, scope: str = None,
+                position: int = OutputPosition.BOTTOM) -> Output:
     """Output success message.
     .. seealso:: `put_info()`
     .. versionadded:: 1.2
@@ -418,21 +440,26 @@ def put_success(*contents, closable=False, scope=None, position=OutputPosition.B
     return _put_message(color='success', contents=contents, closable=closable, scope=scope, position=position)
 
 
-def put_warning(*contents, closable=False, scope=None, position=OutputPosition.BOTTOM) -> Output:
+def put_warning(*contents: Any, closable: bool = False, scope: str = None,
+                position: int = OutputPosition.BOTTOM) -> Output:
     """Output warning message.
     .. seealso:: `put_info()`
     """
     return _put_message(color='warning', contents=contents, closable=closable, scope=scope, position=position)
 
 
-def put_error(*contents, closable=False, scope=None, position=OutputPosition.BOTTOM) -> Output:
+def put_error(*contents: Any, closable: bool = False, scope: str = None,
+              position: int = OutputPosition.BOTTOM) -> Output:
     """Output error message.
     .. seealso:: `put_info()`
     """
     return _put_message(color='danger', contents=contents, closable=closable, scope=scope, position=position)
 
 
-def put_html(html, sanitize=False, scope=None, position=OutputPosition.BOTTOM) -> Output:
+# Due to the IPython rich output compatibility,
+# declare argument `html` to type `str` will cause type check error
+# so leave this argument's type `Any`
+def put_html(html: Any, sanitize: bool = False, scope: str = None, position: int = OutputPosition.BOTTOM) -> Output:
     """
     Output HTML content
 
@@ -452,7 +479,8 @@ def put_html(html, sanitize=False, scope=None, position=OutputPosition.BOTTOM) -
     return Output(spec)
 
 
-def put_code(content, language='', rows=None, scope=None, position=OutputPosition.BOTTOM) -> Output:
+def put_code(content: str, language: str = '', rows: int = None, scope: str = None,
+             position: int = OutputPosition.BOTTOM) -> Output:
     """
     Output code block
 
@@ -504,8 +532,9 @@ def _left_strip_multiple_line_string_literal(s):
     return '\n'.join(lines[:1] + lines_)
 
 
-def put_markdown(mdcontent, lstrip=True, options=None, sanitize=True,
-                 scope=None, position=OutputPosition.BOTTOM, **kwargs) -> Output:
+def put_markdown(mdcontent: str, lstrip: bool = True, options: Dict[str, Union[str, bool]] = None,
+                 sanitize: bool = True,
+                 scope: str = None, position: int = OutputPosition.BOTTOM, **kwargs) -> Output:
     """
     Output Markdown
 
@@ -534,6 +563,7 @@ def put_markdown(mdcontent, lstrip=True, options=None, sanitize=True,
     """
     if 'strip_indent' in kwargs:
         import warnings
+
         # use stacklevel=2 to make the warning refer to put_markdown() call
         warnings.warn("`strip_indent` parameter is deprecated in `put_markdown()`", DeprecationWarning, stacklevel=2)
 
@@ -551,7 +581,7 @@ class span_:
 
 
 @safely_destruct_output_when_exp('content')
-def span(content, row=1, col=1):
+def span(content: Union[str, Output], row: int = 1, col: int = 1):
     """Create cross-cell content in :func:`put_table()` and :func:`put_grid()`
 
     :param content: cell content. It can be a string or ``put_xxx()`` call.
@@ -579,7 +609,8 @@ def span(content, row=1, col=1):
 
 
 @safely_destruct_output_when_exp('tdata')
-def put_table(tdata, header=None, scope=None, position=OutputPosition.BOTTOM) -> Output:
+def put_table(tdata: List[Union[List, Dict]], header: List[Union[str, Tuple[Any, str]]] = None, scope: str = None,
+              position: int = OutputPosition.BOTTOM) -> Output:
     """
     Output table
 
@@ -590,7 +621,7 @@ def put_table(tdata, header=None, scope=None, position=OutputPosition.BOTTOM) ->
        the first item of ``tdata`` will be used as the header.
        The header item can also use the :func:`span()` function to set the cell span.
 
-       When ``tdata`` is list of dict, ``header`` is used to specify the order of table headers, which cannot be omitted.
+       When ``tdata`` is list of dict, ``header`` can be used to specify the order of table headers.
        In this case, the ``header`` can be a list of dict key or a list of ``(<label>, <dict key>)``.
 
     :param int scope, position: Those arguments have the same meaning as for `put_text()`
@@ -640,9 +671,11 @@ def put_table(tdata, header=None, scope=None, position=OutputPosition.BOTTOM) ->
        The cell of table support ``put_xxx()`` calls.
     """
 
-    # Change ``dict`` row table to list row table
-    if tdata and isinstance(tdata[0], dict):
-        if isinstance(header[0], (list, tuple)):
+    if tdata and isinstance(tdata[0], dict):  # Change ``dict`` row table to list row table
+        if header is None:
+            order = list(tdata[0].keys())
+            header_ = [str(h).capitalize() for h in tdata[0].keys()]
+        elif isinstance(header[0], (list, tuple)):
             header_ = [h[0] for h in header]
             order = [h[-1] for h in header]
         else:
@@ -653,14 +686,12 @@ def put_table(tdata, header=None, scope=None, position=OutputPosition.BOTTOM) ->
             for row in tdata
         ]
         header = header_
+    elif not tdata and isinstance(header[0], (list, tuple)):
+        header = [h[0] for h in header]
     else:
         tdata = [list(i) for i in tdata]  # copy data
 
     if header:
-        # when tdata is empty, header will not be process
-        # see https://github.com/pywebio/PyWebIO/issues/453
-        if isinstance(header[0], (list, tuple)):
-            header = [h[0] for h in header]
         tdata = [header, *tdata]
 
     span = {}
@@ -705,8 +736,11 @@ def _format_button(buttons):
     return btns, values
 
 
-def put_buttons(buttons, onclick, small=None, link_style=False, outline=False, group=False, scope=None,
-                position=OutputPosition.BOTTOM, **callback_options) -> Output:
+def put_buttons(buttons: List[Union[Dict[str, Any], Tuple[str, Any], List, str]],
+                onclick: Union[Callable[[Any], None], SequenceType[Callable[[], None]]],
+                small: bool = None, link_style: bool = False, outline: bool = False, group: bool = False,
+                scope: str = None,
+                position: int = OutputPosition.BOTTOM, **callback_options) -> Output:
     """
     Output a group of buttons and bind click event
 
@@ -815,8 +849,9 @@ def put_buttons(buttons, onclick, small=None, link_style=False, outline=False, g
     return Output(spec)
 
 
-def put_button(label, onclick, color=None, small=None, link_style=False, outline=False, disabled=False, scope=None,
-               position=OutputPosition.BOTTOM) -> Output:
+def put_button(label: str, onclick: Callable[[], None], color: str = None, small: bool = None, link_style: bool = False,
+               outline: bool = False, disabled: bool = False, scope: str = None,
+               position: int = OutputPosition.BOTTOM) -> Output:
     """Output a single button and bind click event to it.
 
     :param str label: Button label
@@ -844,8 +879,9 @@ def put_button(label, onclick, color=None, small=None, link_style=False, outline
                        position=position)
 
 
-def put_image(src, format=None, title='', width=None, height=None,
-              scope=None, position=OutputPosition.BOTTOM) -> Output:
+def put_image(src: Union[str, bytes, PILImage], format: str = None, title: str = '', width: str = None,
+              height: str = None,
+              scope: str = None, position: int = OutputPosition.BOTTOM) -> Output:
     """Output image
 
     :param src: Source of image. It can be a string specifying image URL, a bytes-like object specifying
@@ -891,7 +927,8 @@ def put_image(src, format=None, title='', width=None, height=None,
     return put_html(tag, scope=scope, position=position)
 
 
-def put_file(name, content, label=None, scope=None, position=OutputPosition.BOTTOM) -> Output:
+def put_file(name: str, content: bytes, label: str = None, scope: str = None,
+             position: int = OutputPosition.BOTTOM) -> Output:
     """Output a link to download a file
 
     To show a link with the file name on the browser. When click the link, the browser automatically downloads the file.
@@ -919,8 +956,8 @@ def put_file(name, content, label=None, scope=None, position=OutputPosition.BOTT
     return output
 
 
-def put_link(name, url=None, app=None, new_window=False, scope=None,
-             position=OutputPosition.BOTTOM) -> Output:
+def put_link(name: str, url: str = None, app: str = None, new_window: bool = False, scope: str = None,
+             position: int = OutputPosition.BOTTOM) -> Output:
     """Output hyperlinks to other web page or PyWebIO Application page.
 
     :param str name: The label of the link
@@ -940,33 +977,33 @@ def put_link(name, url=None, app=None, new_window=False, scope=None,
     return put_html(tag, scope=scope, position=position)
 
 
-def put_processbar(name, init=0, label=None, auto_close=False, scope=None,
-                   position=OutputPosition.BOTTOM) -> Output:
-    """Output a process bar
+def put_progressbar(name: str, init: float = 0, label: str = None, auto_close: bool = False, scope: str = None,
+                    position: int = OutputPosition.BOTTOM) -> Output:
+    """Output a progress bar
 
     :param str name: The name of the progress bar, which is the unique identifier of the progress bar
     :param float init: The initial progress value of the progress bar. The value is between 0 and 1
-    :param str label: The label of process bar. The default is the percentage value of the current progress.
+    :param str label: The label of progress bar. The default is the percentage value of the current progress.
     :param bool auto_close: Whether to remove the progress bar after the progress is completed
     :param int scope, position: Those arguments have the same meaning as for `put_text()`
 
     Example:
 
     .. exportable-codeblock::
-        :name: put_processbar
-        :summary: `put_processbar()` usage
+        :name: put_progressbar
+        :summary: `put_progressbar()` usage
 
         import time
 
-        put_processbar('bar');
+        put_progressbar('bar');
         for i in range(1, 11):
-            set_processbar('bar', i / 10)
+            set_progressbar('bar', i / 10)
             time.sleep(0.1)
 
-    .. seealso:: use `set_processbar()` to set the progress of progress bar
+    .. seealso:: use `set_progressbar()` to set the progress of progress bar
     """
     check_dom_name_value(name)
-    processbar_id = 'webio-processbar-%s' % name
+    progressbar_id = 'webio-progressbar-%s' % name
     percentage = init * 100
     label = '%.1f%%' % percentage if label is None else label
     tpl = """<div class="progress" style="margin-top: 4px;">
@@ -974,41 +1011,46 @@ def put_processbar(name, init=0, label=None, auto_close=False, scope=None,
                      style="width: {{percentage}}%;" aria-valuenow="{{init}}" aria-valuemin="0" aria-valuemax="1" data-auto-close="{{auto_close}}">{{label}}
                 </div>
             </div>"""
-    return put_widget(tpl, data=dict(elem_id=processbar_id, init=init, label=label,
+    return put_widget(tpl, data=dict(elem_id=progressbar_id, init=init, label=label,
                                      percentage=percentage, auto_close=int(bool(auto_close))), scope=scope,
                       position=position)
 
 
-def set_processbar(name, value, label=None):
+def set_progressbar(name: str, value: float, label: str = None):
     """Set the progress of progress bar
 
     :param str name: The name of the progress bar
     :param float value: The progress value of the progress bar. The value is between 0 and 1
-    :param str label: The label of process bar. The default is the percentage value of the current progress.
+    :param str label: The label of progress bar. The default is the percentage value of the current progress.
 
-    See also: `put_processbar()`
+    See also: `put_progressbar()`
     """
     from pywebio.session import run_js
 
     check_dom_name_value(name)
 
-    processbar_id = 'webio-processbar-%s' % name
+    progressbar_id = 'webio-progressbar-%s' % name
     percentage = value * 100
     label = '%.1f%%' % percentage if label is None else label
 
     js_code = """
-    let bar = $("#{processbar_id}");
+    let bar = $("#{progressbar_id}");
     bar[0].style.width = "{percentage}%";
     bar.attr("aria-valuenow", "{value}");
     bar.text({label!r});
-    """.format(processbar_id=processbar_id, percentage=percentage, value=value, label=label)
+    """.format(progressbar_id=progressbar_id, percentage=percentage, value=value, label=label)
     if value == 1:
         js_code += "if(bar.data('autoClose')=='1')bar.parent().remove();"
 
     run_js(js_code)
 
 
-def put_loading(shape='border', color='dark', scope=None, position=OutputPosition.BOTTOM) -> Output:
+put_processbar = put_progressbar
+set_processbar = set_progressbar
+
+
+def put_loading(shape: str = 'border', color: str = 'dark', scope: str = None,
+                position: int = OutputPosition.BOTTOM) -> Output:
     """Output loading prompt
 
     :param str shape: The shape of loading prompt. The available values are: `'border'` (default)、 `'grow'`
@@ -1029,39 +1071,41 @@ def put_loading(shape='border', color='dark', scope=None, position=OutputPositio
 
         ## ----
         import time  # ..demo-only
-        # Use as context manager, the loading prompt will disappear automatically when the context block exits.
+        # The loading prompt and the output inside the context will disappear
+        # automatically when the context block exits.
         with put_loading():
+            put_text("Start waiting...")
             time.sleep(3)  # Some time-consuming operations
-            put_text("The answer of the universe is 42")
+        put_text("The answer of the universe is 42")
 
         ## ----
         # using style() to set the size of the loading prompt
         put_loading().style('width:4rem; height:4rem')
+
+    .. versionchanged:: 1.8
+       when use `put_loading()` as context manager, the output inside the context will also been removed
+       after the context block exits.
     """
     assert shape in ('border', 'grow'), "shape must in ('border', 'grow')"
     assert color in {'primary', 'secondary', 'success', 'danger', 'warning', 'info', 'light', 'dark'}
 
-    html = """<div class="spinner-{shape} text-{color}" role="status">
+    html = """<div><div class="spinner-{shape} text-{color}" role="status">
                 <span class="sr-only">Loading...</span>
-            </div>""".format(shape=shape, color=color)
+            </div></div>""".format(shape=shape, color=color)
 
     scope_name = random_str(10)
 
-    def enter(self):
-        self.spec['container_dom_id'] = scope2dom(scope_name, no_css_selector=True)
-        self.send()
-        return scope_name
-
-    def exit_(self, exc_type, exc_val, exc_tb):
+    def after_exit():
         remove(scope_name)
         return False  # Propagate Exception
 
     return put_html(html, sanitize=False, scope=scope, position=position). \
-        enable_context_manager(custom_enter=enter, custom_exit=exit_)
+        enable_context_manager(container_dom_id=scope_name, after_exit=after_exit)
 
 
 @safely_destruct_output_when_exp('content')
-def put_collapse(title, content=[], open=False, scope=None, position=OutputPosition.BOTTOM) -> Output:
+def put_collapse(title: str, content: Union[str, Output, List[Union[str, Output]]] = [], open: bool = False,
+                 scope: str = None, position: int = OutputPosition.BOTTOM) -> Output:
     """Output collapsible content
 
     :param str title: Title of content
@@ -1105,8 +1149,9 @@ def put_collapse(title, content=[], open=False, scope=None, position=OutputPosit
 
 
 @safely_destruct_output_when_exp('content')
-def put_scrollable(content=[], height=400, keep_bottom=False, border=True,
-                   scope=None, position=OutputPosition.BOTTOM, **kwargs) -> Output:
+def put_scrollable(content: Union[str, Output, List[Union[str, Output]]] = [],
+                   height: Union[int, Tuple[int, int]] = 400, keep_bottom: bool = False, border: bool = True,
+                   scope: str = None, position: int = OutputPosition.BOTTOM, **kwargs) -> Output:
     """Output a fixed height content area. scroll bar is displayed when the content exceeds the limit
 
     :type content: list/str/put_xxx()
@@ -1148,15 +1193,16 @@ def put_scrollable(content=[], height=400, keep_bottom=False, border=True,
 
     if 'max_height' in kwargs:
         import warnings
+
         # use stacklevel=2 to make the warning refer to the put_scrollable() call
         warnings.warn("`max_height` parameter is deprecated in `put_scrollable()`, use `height` instead.",
                       DeprecationWarning, stacklevel=2)
         height = kwargs['max_height']  # Backward compatible
 
-    try:
-        min_height, max_height = height
-    except Exception:
+    if isinstance(height, int):  # height is a int
         min_height, max_height = height, height
+    else:  # height is a tuple of (min_height, max_height)
+        min_height, max_height = height
 
     spec = _get_output_spec('scrollable', contents=content, min_height=min_height, max_height=max_height,
                             keep_bottom=keep_bottom, border=border, scope=scope, position=position)
@@ -1164,7 +1210,7 @@ def put_scrollable(content=[], height=400, keep_bottom=False, border=True,
 
 
 @safely_destruct_output_when_exp('tabs')
-def put_tabs(tabs, scope=None, position=OutputPosition.BOTTOM) -> Output:
+def put_tabs(tabs: List[Dict[str, Any]], scope: str = None, position: int = OutputPosition.BOTTOM) -> Output:
     """Output tabs.
 
     :param list tabs: Tab list, each item is a dict: ``{"title": "Title", "content": ...}`` .
@@ -1199,7 +1245,7 @@ def put_tabs(tabs, scope=None, position=OutputPosition.BOTTOM) -> Output:
 
 
 @safely_destruct_output_when_exp('data')
-def put_widget(template, data, scope=None, position=OutputPosition.BOTTOM) -> Output:
+def put_widget(template: str, data: Dict[str, Any], scope: str = None, position: int = OutputPosition.BOTTOM) -> Output:
     """Output your own widget
 
     :param template: html template, using `mustache.js <https://github.com/janl/mustache.js>`_ syntax
@@ -1246,7 +1292,8 @@ def put_widget(template, data, scope=None, position=OutputPosition.BOTTOM) -> Ou
 
 
 @safely_destruct_output_when_exp('content')
-def put_row(content=[], size=None, scope=None, position=OutputPosition.BOTTOM) -> Output:
+def put_row(content: List[Union[Output, None]] = [], size: str = None, scope: str = None,
+            position: int = OutputPosition.BOTTOM) -> Output:
     """Use row layout to output content. The content is arranged horizontally
 
     :param list content: Content list, the item is ``put_xxx()`` call or ``None``. ``None`` represents the space between the output
@@ -1286,7 +1333,8 @@ def put_row(content=[], size=None, scope=None, position=OutputPosition.BOTTOM) -
 
 
 @safely_destruct_output_when_exp('content')
-def put_column(content=[], size=None, scope=None, position=OutputPosition.BOTTOM) -> Output:
+def put_column(content: List[Union[Output, None]] = [], size: str = None, scope: str = None,
+               position: int = OutputPosition.BOTTOM) -> Output:
     """Use column layout to output content. The content is arranged vertically
 
     :param list content: Content list, the item is ``put_xxx()`` call or ``None``. ``None`` represents the space between the output
@@ -1321,8 +1369,9 @@ def _row_column_layout(content, flow, size, scope=None, position=OutputPosition.
 
 
 @safely_destruct_output_when_exp('content')
-def put_grid(content, cell_width='auto', cell_height='auto', cell_widths=None, cell_heights=None, direction='row',
-             scope=None, position=OutputPosition.BOTTOM) -> Output:
+def put_grid(content: List[List[Union[Output, None]]], cell_width: str = 'auto', cell_height: str = 'auto',
+             cell_widths: str = None, cell_heights: str = None, direction: str = 'row', scope: str = None,
+             position: int = OutputPosition.BOTTOM) -> Output:
     """Output content using grid layout
 
     :param content: Content of grid, which is a two-dimensional list. The item of list is ``put_xxx()`` call or ``None``.
@@ -1344,7 +1393,7 @@ def put_grid(content, cell_width='auto', cell_height='auto', cell_widths=None, c
     The format of width/height value in ``cell_width``,``cell_height``,``cell_widths``,``cell_heights``
     can refer to the ``size`` parameter of the `put_row()` function.
 
-    :Example:
+    Example:
 
     .. exportable-codeblock::
         :name: put_grid
@@ -1407,7 +1456,8 @@ def put_grid(content, cell_width='auto', cell_height='auto', cell_widths=None, c
 
 
 @safely_destruct_output_when_exp('content')
-def put_scope(name, content=[], scope=None, position=OutputPosition.BOTTOM) -> Output:
+def put_scope(name: str, content: Union[Output, List[Output]] = [], scope: str = None,
+              position: int = OutputPosition.BOTTOM) -> Output:
     """Output a scope
 
     :param str name:
@@ -1422,6 +1472,328 @@ def put_scope(name, content=[], scope=None, position=OutputPosition.BOTTOM) -> O
 
     spec = _get_output_spec('scope', dom_id=dom_id, contents=content, scope=scope, position=position)
     return Output(spec)
+
+
+class JSFunction:
+    def __init__(self, *params_and_body: str):
+        if not params_and_body:
+            raise ValueError('JSFunction must have at least body')
+        self.params = params_and_body[:-1]
+        self.body = params_and_body[-1]
+
+
+def put_datatable(
+        records: SequenceType[MappingType],
+        actions: SequenceType[Tuple[str, Callable[[Union[str, int, List[Union[str, int]]]], None]]] = None,
+        onselect: Callable[[Union[str, int, List[Union[str, int]]]], None] = None,
+        multiple_select=False,
+        id_field: str = None,
+        height: Union[str, int] = 600,
+        theme: "Literal['alpine', 'alpine-dark', 'balham', 'balham-dark', 'material']" = 'balham',
+        cell_content_bar=True,
+        instance_id='',
+        column_order: Union[SequenceType[str], MappingType] = None,
+        column_args: MappingType[Union[str, Tuple], MappingType] = None,
+        grid_args: MappingType[str, MappingType] = None,
+        enterprise_key='',
+        scope: str = None,
+        position: int = OutputPosition.BOTTOM
+) -> Output:
+    """
+    Output a datatable.
+
+    Compared with `put_table()`, `put_datatable()` is more suitable for displaying large amounts of data
+    (both data fields and data entries), while `put_table()` is more suitable for displaying diverse data types
+    (pictures, buttons, etc.) in cells.
+
+    This widget is powered by the awesome `ag-grid <https://www.ag-grid.com/>`_ library.
+
+    :param list[dict] records: data of rows, each row is a python ``dict``, which can be nested.
+    :param list actions: actions for selected row(s), they will be shown as buttons when row is selected.
+        The format of the action item: `(button_label:str, on_click:callable)`.
+        Specifically, ``None`` item is allowed, which will be rendered as a separator.
+        The ``on_click`` callback receives the selected row ID as parameter.
+    :param callable onselect: callback when row is selected, receives the selected row ID as parameter.
+    :param bool multiple_select: whether multiple rows can be selected.
+        When enabled, the ``on_click`` callback in ``actions`` and the ``onselect`` callback will receive
+        ID list of selected rows as parameter.
+    :param str/tuple id_field: row ID field, that is, the key of the row dict to uniquely identifies a row.
+        When not provide, the datatable will use the index in ``records`` to assign row ID.
+
+        .. collapse:: Notes when the row record is nested dict
+
+            To specify the ID field of a nested dict, use a tuple to specify the path of the ID field.
+            For example, if the row record is in ``{'a': {'b': ...}}`` format, you can use ``id_field=('a', 'b')``
+            to set ``'b'`` column as the ID field.
+
+    :param int/str height: widget height. When pass ``int`` type, the unit is pixel,
+        when pass ``str`` type, you can specify any valid CSS height value.
+        In particular, you can use ``'auto'`` to make the datatable auto-size it's height to fit the content.
+    :param str theme: datatable theme.
+        Available themes are: ``'balham'`` (default), ``'alpine'``, ``'alpine-dark'``, ``'balham-dark'``, ``'material'``.
+        You can preview the themes in `ag-grid official example <https://www.ag-grid.com/example/?theme=ag-theme-balham>`_.
+    :param bool cell_content_bar: whether to add a text bar to datatable to show the content of current focused cell.
+        Default is ``True``.
+    :param str instance_id: Assign a unique ID to the datatable, so that you can refer this datatable in
+        `datatable_update()`, `datatable_insert()` and `datatable_remove()` functions.
+
+    :param list column_order: column order, the order of the column names in the list will be used as the column order.
+        If not provided, the column order will be the same as the order of the keys in the first row of ``records``.
+        When provided, the column not in the list will not be shown.
+
+        .. collapse:: Notes when the row record is nested dict
+
+           Since the ``dict`` in python is ordered after py3.7, you can use dict to specify the column order when the
+           row record is nested dict. For example::
+
+                column_order = {'a': {'b': {'c': None, 'd': None}, 'e': None}, 'f': None}
+
+    :param column_args: column properties.
+        Dict type, the key is str to specify the column field, the value is
+        `ag-grid column properties <https://www.ag-grid.com/javascript-data-grid/column-properties/>`_ in dict.
+
+        .. collapse:: Notes when the row record is nested dict
+
+           Given the row record is in this format::
+
+               {
+                   "a": {"b": ..., "c": ...},
+                   "b": ...,
+                   "c": ...
+               }
+
+           When you set ``column_args={"b": settings}``, the column settings will be applied to the column ``a.b`` and ``b``.
+           Use tuple as key to specify the nested key path, for example, ``column_args={("a", "b"): settings}`` will only
+           apply the settings to column ``a.b``.
+
+    :param grid_args: ag-grid grid options.
+        Refer `ag-grid doc - grid options <https://www.ag-grid.com/javascript-data-grid/grid-options/>`_ for more information.
+    :param str enterprise_key: `ag-grid enterprise  <https://www.ag-grid.com/javascript-data-grid/licensing/>`_ license key.
+        When not provided, will use the ag-grid community version.
+
+    The ag-grid library is so powerful, and you can use the ``column_args`` and ``grid_args`` parameters to achieve
+    high customization.
+
+    Example of ``put_datatable()``:
+
+    .. exportable-codeblock::
+        :name: datatable
+        :summary: `put_datatable()` usage
+
+        import urllib.request
+        import json
+
+        with urllib.request.urlopen('https://fakerapi.it/api/v1/persons?_quantity=30') as f:
+            data = json.load(f)['data']
+
+        put_datatable(
+            data,
+            actions=[
+                ("Edit Email", lambda row_id: datatable_update('user', input("Email"), row_id, "email")),
+                ("Insert a Row", lambda row_id: datatable_insert('user', data[0], row_id)),
+                None,  # separator
+                ("Delete", lambda row_id: datatable_remove('user', row_id)),
+            ],
+            onselect=lambda row_id: toast(f'Selected row: {row_id}'),
+            instance_id='user'
+        )
+
+
+    .. collapse:: Advanced topic: Interact with ag-grid in Javascript
+
+        The ag-grid instance can be accessed with JS global variable ``ag_grid_${instance_id}_promise``::
+
+            ag_grid_xxx_promise.then(function(gridOptions) {
+                // gridOptions is the ag-grid gridOptions object
+                gridOptions.columnApi.autoSizeAllColumns();
+            });
+
+        To pass JS functions as value of ``column_args`` or ``grid_args``, you can use ``JSFunction`` object:
+
+            .. py:function:: JSFunction([param1], [param2], ... , [param n], body)
+
+            Example::
+
+                put_datatable(..., grid_args=dict(sortChanged=JSFunction("event", "console.log(event.source)")))
+
+        Since the ag-grid don't native support nested dict as row record, PyWebIO will internally flatten the nested
+        dict before passing to ag-grid. So when you access or modify data in ag-grid directly, you need to use the
+        following functions to help you convert the data:
+
+         - ``gridOptions.flatten_row(nested_dict_record)``: flatten the nested dict record to a flat dict record
+         - ``gridOptions.path2field(field_path_array)``: convert the field path array to field name used in ag-grid
+         - ``gridOptions.field2path(ag_grid_column_field_name)``: convert the field name back to field path array
+
+        The implement of `datatable_update()`, `datatable_insert` and `datatable_remove` functions are good examples
+        to show how to interact with ag-grid in Javascript.
+    """
+    actions = actions or []
+    column_args = column_args or {}
+    grid_args = grid_args or {}
+
+    if isinstance(height, int):
+        height = f"{height}px"
+    if height == 'auto' and len(records) > 1000:
+        height = '600px'
+        logger.warning("put_datatable: numbers of rows are too large to use auto height, use fix height instead")
+
+    if isinstance(id_field, str):
+        id_field = [id_field]
+
+    js_func_key = random_str(10)
+
+    def json_encoder(obj):
+        if isinstance(obj, JSFunction):
+            return dict(
+                __pywebio_js_function__=js_func_key,
+                params=obj.params,
+                body=obj.body,
+            )
+        raise TypeError
+
+    column_args = json.loads(json.dumps(column_args, default=json_encoder))
+    grid_args = json.loads(json.dumps(grid_args, default=json_encoder))
+
+    def callback(data: Dict):
+        rows = data['rows'] if multiple_select else data['rows'][0]
+
+        if "btn" not in data and onselect is not None:
+            return onselect(rows)
+
+        _, cb = actions[data['btn']]
+        return cb(rows)
+
+    callback_id = None
+    if actions or onselect:
+        callback_id = output_register_callback(callback)
+
+    action_labels = [a[0] if a else None for a in actions]
+    field_args = {k: v for k, v in column_args.items() if isinstance(k, str)}
+    path_args = [(k, v) for k, v in column_args.items() if not isinstance(k, str)]
+
+    if isinstance(column_order, (list, tuple)):
+        column_order = {k: None for k in column_order}
+
+    spec = _get_output_spec(
+        'datatable',
+        records=records, callback_id=callback_id, actions=action_labels, on_select=onselect is not None,
+        id_field=id_field, column_order=column_order,
+        multiple_select=multiple_select, field_args=field_args, path_args=path_args,
+        grid_args=grid_args, js_func_key=js_func_key, cell_content_bar=cell_content_bar,
+        height=height, theme=theme, enterprise_key=enterprise_key,
+        instance_id=instance_id,
+        scope=scope, position=position
+    )
+    return Output(spec)
+
+
+def datatable_update(
+        instance_id: str,
+        data: Any,
+        row_id: Union[int, str] = None,
+        field: Union[str, List[str], Tuple[str]] = None
+):
+    """
+    Update the whole data / a row / a cell of the datatable.
+
+    To use `datatable_update()`, you need to specify the ``instance_id`` parameter when calling :py:func:`put_datatable()`.
+
+    When ``row_id`` and ``field`` is not specified (``datatable_update(instance_id, data)``),
+    the whole data of datatable will be updated, in this case,
+    the ``data`` parameter should be a list of dict (same as ``records`` in :py:func:`put_datatable()`).
+
+    To update a row, specify the ``row_id`` parameter and pass the row data in dict to ``data``
+    parameter (``datatable_update(instance_id, data, row_id)``).
+    See ``id_field`` of :py:func:`put_datatable()` for more info of ``row_id``.
+
+    To update a cell, specify the ``row_id`` and ``field`` parameters, in this case, the ``data`` parameter should be
+    the cell value To update a row, specify the ``row_id`` parameter and pass the row data in dict to ``data``
+    parameter (``datatable_update(instance_id, data, row_id, field)``).
+    The ``field`` can be a tuple to indicate nested key path.
+    """
+    from .session import run_js
+
+    instance_id = f"ag_grid_{instance_id}_promise"
+    if row_id is None and field is None:  # update whole table
+        run_js("""window[instance_id] ? window[instance_id].then((grid) => {
+            grid.api.setRowData(data.map((row) => grid.flatten_row(row)))
+        }) : console.error(`Datatable instance [${instance_id}] not found`);
+        """, instance_id=instance_id, data=data)
+
+    if row_id is not None and field is None:  # update whole row
+        run_js("""window[instance_id] ? window[instance_id].then((grid) => {
+            let row = grid.api.getRowNode(row_id);
+            if (row) row.setData(grid.flatten_row(data))
+        }) : console.error(`Datatable instance [${instance_id}] not found`);
+        """, instance_id=instance_id, row_id=row_id, data=data)
+
+    if row_id is not None and field is not None:  # update field
+        if not isinstance(field, (list, tuple)):
+            field = [field]
+        run_js("""window[instance_id] ? window[instance_id].then((grid) => {
+            let row = grid.api.getRowNode(row_id);
+            if (row) 
+                row.setDataValue(grid.path2field(path), data) && 
+                grid.api.refreshClientSideRowModel();
+        }) : console.error(`Datatable instance [${instance_id}] not found`);
+        """, instance_id=instance_id, row_id=row_id, data=data, path=field)
+
+    if row_id is None and field is not None:
+        raise ValueError("`row_id` is required when provide `field`")
+
+
+def datatable_insert(instance_id: str, records: List, row_id=None):
+    """
+    Insert rows to datatable.
+
+    :param str instance_id: Datatable instance id
+        (i.e., the ``instance_id`` parameter when calling :py:func:`put_datatable()`)
+    :param dict/list[dict] records: row record or row record list to insert
+    :param str/int row_id: row id to insert before, if not specified, insert to the end
+
+    Note:
+        When use ``id_field=None`` (default) in :py:func:`put_datatable()`, the row id of new inserted rows will
+        auto increase from the last max row id.
+    """
+    from .session import run_js
+
+    if not isinstance(records, (list, tuple)):
+        records = [records]
+
+    instance_id = f"ag_grid_{instance_id}_promise"
+    run_js("""window[instance_id] ? window[instance_id].then((grid) => {
+        let row = grid.api.getRowNode(row_id);
+        let idx = row ? row.rowIndex : null;
+        grid.api.applyTransaction({
+            add: records.map((row) => grid.flatten_row(row)),
+            addIndex: idx,
+        });
+    }) : console.error(`Datatable instance [${instance_id}] not found`);
+    """, instance_id=instance_id, records=records, row_id=row_id)
+
+
+def datatable_remove(instance_id: str, row_ids: List):
+    """
+    Remove rows from datatable.
+
+    :param str instance_id: Datatable instance id
+        (i.e., the ``instance_id`` parameter when calling :py:func:`put_datatable()`)
+    :param int/str/list row_ids: row id or row id list to remove
+    """
+    from .session import run_js
+
+    instance_id = f"ag_grid_{instance_id}_promise"
+    if not isinstance(row_ids, (list, tuple)):
+        row_ids = [row_ids]
+    run_js("""window[instance_id] ? window[instance_id].then((grid) => {
+        let remove_rows = [];
+        for (let row_id of row_ids) {
+            let row = grid.api.getRowNode(row_id);
+            if (row) remove_rows.push(row.data);
+        }
+        grid.api.applyTransaction({remove: remove_rows});
+    }) : console.error(`Datatable instance [${instance_id}] not found`);
+    """, instance_id=instance_id, row_ids=row_ids)
 
 
 @safely_destruct_output_when_exp('contents')
@@ -1469,6 +1841,7 @@ def output(*contents):
     """
 
     import warnings
+
     # use stacklevel=2 to make the warning refer to the output() call
     warnings.warn("`pywebio.output.output()` is deprecated since v1.5 and will remove in the future version, "
                   "use `pywebio.output.put_scope()` instead", DeprecationWarning, stacklevel=2)
@@ -1530,7 +1903,7 @@ def output(*contents):
 
 
 @safely_destruct_output_when_exp('outputs')
-def style(outputs, css_style) -> Union[Output, OutputList]:
+def style(outputs: Union[Output, List[Output]], css_style: str) -> Union[Output, OutputList]:
     """Customize the css style of output content
 
     .. deprecated:: 1.3
@@ -1590,7 +1963,9 @@ def style(outputs, css_style) -> Union[Output, OutputList]:
 
 
 @safely_destruct_output_when_exp('content')
-def popup(title, content=None, size=PopupSize.NORMAL, implicit_close=True, closable=True):
+def popup(title: str, content: Union[str, Output, List[Union[str, Output]]] = None, size: str = PopupSize.NORMAL,
+          implicit_close: bool = True,
+          closable: bool = True):
     """
     Show a popup.
 
@@ -1608,7 +1983,7 @@ def popup(title, content=None, size=PopupSize.NORMAL, implicit_close=True, closa
         When set to ``False``, the popup window can only be closed by :func:`popup_close()`,
         at this time the ``implicit_close`` parameter will be ignored.
 
-    ``popup()`` can be used in 3 ways: direct call, context manager, and decorator.
+    ``popup()`` can be used in 2 ways: direct call and context manager.
 
     * direct call:
 
@@ -1645,20 +2020,6 @@ def popup(title, content=None, size=PopupSize.NORMAL, implicit_close=True, closa
     After the context manager exits, the popup window will not be closed.
     You can still use the ``scope`` parameter of the output function to output to the popup.
 
-    * decorator:
-
-    .. exportable-codeblock::
-        :name: popup-decorator
-        :summary: `popup()` as decorator
-
-        @popup('Popup title')
-        def show_popup():
-            put_html('<h3>Popup Content</h3>')
-            put_text("I'm in a popup!")
-            ...
-
-        show_popup()
-
     """
     if content is None:
         content = []
@@ -1686,7 +2047,8 @@ def close_popup():
     send_msg(cmd='close_popup')
 
 
-def toast(content, duration=2, position='center', color='info', onclick=None):
+def toast(content: str, duration: float = 2, position: str = 'center', color: str = 'info',
+          onclick: Callable[[], None] = None):
     """Show a notification message.
 
     :param str content: Notification content.
@@ -1729,7 +2091,7 @@ def toast(content, duration=2, position='center', color='info', onclick=None):
 clear_scope = clear
 
 
-def use_scope(name=None, clear=False, **kwargs):
+def use_scope(name: str = None, clear: bool = False, **kwargs):
     """use_scope(name=None, clear=False)
 
     Open or enter a scope. Can be used as context manager and decorator.

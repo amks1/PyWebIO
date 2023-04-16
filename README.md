@@ -22,17 +22,11 @@
         <img src="https://img.shields.io/badge/python->%3D%203.5.2-brightgreen" alt="Python Version">
     </a>
     <br/>
-    <a href="https://lgtm.com/projects/g/wang0618/PyWebIO/context:python">
-        <img src="https://img.shields.io/lgtm/grade/python/github/wang0618/PyWebIO.svg?colorB=brightgreen" alt="Python code quality">
-    </a>
-    <a href="https://lgtm.com/projects/g/wang0618/PyWebIO/context:javascript">
-        <img src="https://img.shields.io/lgtm/grade/javascript/github/wang0618/PyWebIO.svg?colorB=brightgreen" alt="Javascript code quality">
-    </a>
     <a href="https://github.com/wang0618/PyWebIO/blob/master/LICENSE">
         <img src="https://img.shields.io/github/license/wang0618/PyWebIO.svg" alt="License">
     </a>
     <br/>
-    <a href="https://pywebio.readthedocs.io">[Document]</a> | <a href="http://pywebio-demos.pywebio.online/">[Demos]</a> | <a href="https://github.com/wang0618/PyWebIO/wiki/Why-PyWebIO%3F">[Why PyWebIO?]</a>
+    <a href="https://pywebio.readthedocs.io">[Document]</a> | <a href="http://pywebio-demos.pywebio.online/">[Demos]</a> | <a href="https://play.pywebio.online">[Playground]</a> | <a href="https://github.com/wang0618/PyWebIO/wiki/Why-PyWebIO%3F">[Why PyWebIO?]</a>
 </p>
 
 [English](README.md) | [中文](README-zh.md)
@@ -64,7 +58,7 @@ pip3 install -U pywebio
 
 Development version:
 ```bash
-pip3 install -U https://code.aliyun.com/wang0618/pywebio/repository/archive.zip
+pip3 install -U https://github.com/pywebio/PyWebIO/archive/dev-release.zip
 ```
 
 **Prerequisites**: PyWebIO requires Python 3.5.2 or newer
@@ -153,6 +147,7 @@ For integration with other web frameworks, please refer to [document](https://py
  - [Basic demo](http://pywebio-demos.pywebio.online/) : PyWebIO basic input and output demos and some small applications written using PyWebIO.
  - [Data visualization demo](http://pywebio-charts.pywebio.online/) : Data visualization with the third-party libraries, e.g., `plotly`, `bokeh`, `pyecharts`.
 
-## Document
+## Links
 
-Document is on [https://pywebio.readthedocs.io](https://pywebio.readthedocs.io)
+* Document [pywebio.readthedocs.io](https://pywebio.readthedocs.io)
+* [PyWebIO Playground](https://play.pywebio.online/): Edit, Run, Share PyWebIO Code Online

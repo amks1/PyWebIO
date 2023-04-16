@@ -177,3 +177,98 @@ function int2bytes(num: number) {
     dataView.setUint32(4, num | 0);
     return buf;
 }
+
+export function is_mobile() {
+    // @ts-ignore
+    if (navigator.userAgentData) return navigator.userAgentData.mobile;
+    const ipadOS = (navigator.platform === 'MacIntel' && navigator.maxTouchPoints > 1); /* iPad OS 13 */
+    return /android|webos|iphone|ipad|ipod|blackberry|iemobile|opera mini/i.test(navigator.userAgent.toLowerCase()) || ipadOS;
+}
+
+// put send task to a queue and run it one by one
+export class ReliableSender {
+    private seq = 0;
+    private queue: { enable_batch: boolean, task: any }[] = [];
+    private _stop = false;
+    private ignore_interval_send = false;
+    private last_send_time = 0;
+    private interval_send_id = 0;
+
+    constructor(
+        private readonly sender: (tasks: any[], seq: number) => Promise<void>,
+        private window_size: number = 8,
+        init_seq = 0,
+        send_interval = 2000,
+        private min_send_interval = 1000,
+    ) {
+        this.sender = sender;
+        this.window_size = window_size;
+        this.seq = init_seq;
+        this.queue = [];
+        this.ignore_interval_send = false;
+        this.interval_send_id = setInterval(this.interval_send.bind(this), send_interval);
+    }
+
+    /*
+    * for continuous batch_send tasks in queue, they will be sent in one sender,
+    * for non-batch task, each will be sent in a single sender,
+    * the sending will retry when there are unfinished task in queue.
+    * */
+    add_send_task(task: any, allow_batch_send = true) {
+        if (this._stop) return;
+        this.queue.push({
+            enable_batch: allow_batch_send,
+            task: task
+        });
+        this.do_send();
+    }
+
+    private get_tasks() {
+        let tasks: any[] = [];
+        for (let item of this.queue) {
+            if (!item.enable_batch)
+                break;
+            tasks.push(item.task);
+        }
+        let batch_send = true;
+        if (tasks.length === 0 && this.queue.length > 0 && !this.queue[0].enable_batch) {
+            batch_send = false;
+            tasks.push(this.queue[0].task);
+        }
+        return {tasks, batch_send};
+    }
+
+    private do_send() {
+        const info = this.get_tasks();
+        const tasks = info.tasks, batch_send = info.batch_send;
+        if (tasks.length === 0) {
+            return;
+        }
+        this.last_send_time = Date.now();
+        if (!batch_send)  // for non-batch task, only retry after current request finished
+            this.ignore_interval_send = true;
+        this.sender(tasks, this.seq).then(() => {
+            this.ignore_interval_send = false;
+        });
+    }
+
+    private interval_send() {
+        if (this._stop || this.ignore_interval_send) return;
+        if (Date.now() - this.last_send_time < this.min_send_interval) return;
+        this.do_send();
+    }
+
+    // seq for each ack call must be larger than the previous one, otherwise the ack will be ignored
+    ack(seq: number) {
+        if (seq < this.seq)
+            return;
+        let pop_count = seq - this.seq + 1;
+        this.queue = this.queue.slice(pop_count);
+        this.seq = seq + 1;
+    }
+
+    stop() {
+        this._stop = true;
+        clearInterval(this.interval_send_id);
+    }
+}

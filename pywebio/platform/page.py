@@ -1,3 +1,4 @@
+import json
 import urllib.parse
 from collections import namedtuple
 from collections.abc import Mapping, Sequence
@@ -13,15 +14,15 @@ from ..utils import isgeneratorfunction, iscoroutinefunction, get_function_name,
 
 """
 The maximum size in bytes of a http request body or a websocket message, after which the request or websocket is aborted
-Set by `start_server()` or `path_deploy()` 
-Used in `file_upload()` as the `max_size`/`max_total_size` parameter default or to validate the parameter. 
+Set by `start_server()` or `path_deploy()`
+Used in `file_upload()` as the `max_size`/`max_total_size` parameter default or to validate the parameter.
 """
 MAX_PAYLOAD_SIZE = 0
 
 DEFAULT_CDN = "https://cdn.jsdelivr.net/gh/wang0618/PyWebIO-assets@v{version}/"
 
-_global_config = {'title': 'PyWebIO Application'}
-config_keys = ['title', 'description', 'js_file', 'js_code', 'css_style', 'css_file', 'theme']
+_global_config = {}
+config_keys = ['title', 'description', 'js_file', 'js_code', 'css_style', 'css_file', 'theme', 'manifest']
 AppMeta = namedtuple('App', config_keys)
 
 _here_dir = path.dirname(path.abspath(__file__))
@@ -45,13 +46,15 @@ def render_page(app, protocol, cdn):
     else:  # user custom cdn
         base_url = cdn.rstrip('/') + '/'
 
+    manifest = manifest_tag(base_url, meta)
+
     theme = environ.get('PYWEBIO_THEME', meta.theme) or 'default'
     check_theme(theme)
 
-    return _index_page_tpl.generate(title=meta.title, description=meta.description, protocol=protocol,
-                                    script=True, content='', base_url=base_url, version=version,
+    return _index_page_tpl.generate(title=meta.title or 'PyWebIO Application', description=meta.description,
+                                    protocol=protocol, script=True, content='', base_url=base_url, version=version,
                                     js_file=meta.js_file or [], js_code=meta.js_code, css_style=meta.css_style,
-                                    css_file=meta.css_file or [], theme=theme)
+                                    css_file=meta.css_file or [], theme=theme, manifest=manifest)
 
 
 @lru_cache(maxsize=64)
@@ -65,29 +68,27 @@ def check_theme(theme):
         raise RuntimeError("Can't find css file for theme `%s`" % theme)
 
 
-def parse_app_metadata(func):
-    """Get metadata form pywebio task function, fallback to global config in empty meta field."""
+def parse_app_metadata(func) -> AppMeta:
+    """Get metadata for pywebio task function"""
     prefix = '_pywebio_'
     attrs = get_function_attr(func, [prefix + k for k in config_keys])
-    meta = AppMeta(**{k: attrs.get(prefix + k) for k in config_keys})
+    meta = {k: attrs.get(prefix + k) for k in config_keys}
 
+    # fallback to title and description from docstring
     doc = get_function_doc(func)
     parts = doc.strip().split('\n\n', 1)
     if len(parts) == 2:
         title, description = parts
     else:
         title, description = parts[0], ''
-
-    if not meta.title:
-        meta = meta._replace(title=title, description=description)
+    meta['title'] = meta.get('title') or title
+    meta['description'] = meta.get('description') or description
 
     # fallback to global config
     for key in config_keys:
-        if not getattr(meta, key, None) and _global_config.get(key):
-            kwarg = {key: _global_config.get(key)}
-            meta = meta._replace(**kwarg)
+        meta[key] = meta[key] or _global_config.get(key)
 
-    return meta
+    return AppMeta(**meta)
 
 
 _app_list_tpl = template.Template("""
@@ -102,7 +103,7 @@ _app_list_tpl = template.Template("""
         {% end %}
 
         {% if meta.description %}
-            {{ meta.description }} 
+            {{ meta.description }}
         {% else %}
             <i>No description.</i>
         {% end %}
@@ -222,7 +223,42 @@ def seo(title, description=None, app=None):
     return config(title=title, description=description)
 
 
-def config(*, title=None, description=None, theme=None, js_code=None, js_file=[], css_style=None, css_file=[]):
+def manifest_tag(base_url, meta: AppMeta):
+    """Generate inline web app manifest
+    https://stackoverflow.com/questions/46221528/inline-the-web-app-manifest
+    """
+    if meta.manifest is False:
+        return ""
+
+    manifest_ = meta.manifest or {}
+    if manifest_ is True:
+        manifest_ = {}
+
+    manifest = {
+        "name": meta.title,
+        "description": meta.description,
+        "start_url": ".",
+        "display": "standalone",
+        "theme_color": "white",
+        "background_color": "white",
+        "icons": [
+            {"src": f"{base_url}image/apple-touch-icon.png", "type": "image/png", "sizes": "180x180"},
+        ]
+    }
+    manifest.update(manifest_)
+
+    icon = manifest.pop("icon", None)
+    if not icon:
+        icon = base_url + 'image/apple-touch-icon.png'
+
+    manifest_encode = urllib.parse.quote(json.dumps(manifest))
+    tag = f"""<link rel="apple-touch-icon" href="{icon}">
+    <link rel="manifest" href='data:application/manifest+json,{manifest_encode}' />"""
+    return tag
+
+
+def config(*, title=None, description=None, theme=None, js_code=None, js_file=[], css_style=None, css_file=[],
+           manifest=True):
     """PyWebIO application configuration
 
     :param str title: Application title
@@ -241,6 +277,15 @@ def config(*, title=None, description=None, theme=None, js_code=None, js_file=[]
     :param str/list js_file: The javascript files that inject to page, can be a URL in str or a list of it.
     :param str css_style: The CSS style that you want to inject to page.
     :param str/list css_file: The CSS files that inject to page, can be a URL in str or a list of it.
+    :param bool/dict manifest: `Web application manifest <https://developer.mozilla.org/en-US/docs/Web/Manifest>`_ configuration.
+        This feature allows you to add a shortcut to the home screen of your mobile device, and launch the app like a native app.
+        If set to ``True``, the default manifest will be used. You can also specify the manifest content in dict.
+        If ``False``, the manifest will be disabled.
+
+        .. collapse:: Note for icon configuration
+
+            Currently, the `icons <https://developer.mozilla.org/en-US/docs/Web/Manifest/icons>`_ field of the manifest
+            is not supported. Instead, you can use the ``icon`` field to specify the icon url.
 
     ``config()`` can be used in 2 ways: direct call and decorator.
     If you call ``config()`` directly, the configuration will be global.

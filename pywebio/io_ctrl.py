@@ -76,8 +76,7 @@ class Output:
         self.enabled_context_manager = False
         self.container_selector = None
         self.container_dom_id = None  # todo: this name is ambiguous, rename it to `scope_name` or others
-        self.custom_enter = None
-        self.custom_exit = None
+        self.after_exit = None
 
         # Try to make sure current session exist.
         # If we leave the session interaction in `Output.__del__`,
@@ -86,20 +85,16 @@ class Output:
         # See also: https://github.com/pywebio/PyWebIO/issues/243
         get_current_session()
 
-    def enable_context_manager(self, container_selector=None, container_dom_id=None, custom_enter=None,
-                               custom_exit=None):
+    def enable_context_manager(self, container_selector=None, container_dom_id=None, after_exit=None):
         self.enabled_context_manager = True
         self.container_selector = container_selector
         self.container_dom_id = container_dom_id
-        self.custom_enter = custom_enter
-        self.custom_exit = custom_exit
+        self.after_exit = after_exit
         return self
 
     def __enter__(self):
         if not self.enabled_context_manager:
             raise RuntimeError("This output function can't be used as context manager!")
-        if self.custom_enter:
-            return self.custom_enter(self)
 
         self.container_dom_id = self.container_dom_id or random_str(10)
         self.spec['container_selector'] = self.container_selector
@@ -114,10 +109,9 @@ class Output:
         it means that the context manager can handle the exception,
         so that the with statement terminates the propagation of the exception
         """
-        if self.custom_exit:
-            return self.custom_exit(self, exc_type=exc_type, exc_val=exc_val, exc_tb=exc_tb)
-
         get_current_session().pop_scope()
+        if self.after_exit:
+            self.after_exit()
         return False  # Propagate Exception
 
     def embed_data(self):
@@ -286,7 +280,7 @@ def input_control(spec, preprocess_funcs, item_valid_funcs, onchange_funcs, form
     return data
 
 
-def check_item(name, data, valid_func, preprocess_func):
+def check_item(name, data, valid_func, preprocess_func, clear_invalid=False):
     try:
         data = preprocess_func(data)
         error_msg = valid_func(data)
@@ -301,7 +295,7 @@ def check_item(name, data, valid_func, preprocess_func):
             'invalid_feedback': error_msg
         }))
         return False
-    else:
+    elif clear_invalid:
         send_msg('update_input', dict(target_name=name, attributes={
             'valid_status': 0,  # valid_status为0表示清空valid_status标志
         }))
@@ -340,6 +334,7 @@ def input_event_handle(item_valid_funcs, form_valid_funcs, preprocess_funcs, onc
     :param onchange_funcs: map(name -> onchange_func)
     :return:
     """
+    data = None
     while True:
         event = yield next_client_event()
         event_name, event_data = event['event'], event['data']
@@ -348,7 +343,7 @@ def input_event_handle(item_valid_funcs, form_valid_funcs, preprocess_funcs, onc
             if input_event == 'blur':
                 onblur_name = event_data['name']
                 check_item(onblur_name, event_data['value'], item_valid_funcs[onblur_name],
-                           preprocess_funcs[onblur_name])
+                           preprocess_funcs[onblur_name], clear_invalid=True)
             elif input_event == 'change':
                 trigger_onchange(event_data, onchange_funcs)
 
@@ -381,10 +376,9 @@ def input_event_handle(item_valid_funcs, form_valid_funcs, preprocess_funcs, onc
                         }))
 
             if all_valid:
-                break
+                break  # form event loop
         elif event_name == 'from_cancel':
-            data = None
-            break
+            break  # break event loop
         else:
             logger.warning("Unhandled Event: %s", event)
 

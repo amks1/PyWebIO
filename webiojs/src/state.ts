@@ -7,8 +7,8 @@ export let state = {
     ShowDuration: 200,  // ms, 显示表单的过渡动画时长
     InputPanelMinHeight: 300,  // 输入panel的最小高度
     InputPanelInitHeight: 300,  // 输入panel的初始高度
-    FixedInputPanel:true,
-    AutoFocusOnInput:true,
+    FixedInputPanel: true,
+    AutoFocusOnInput: true,
 };
 
 // App config
