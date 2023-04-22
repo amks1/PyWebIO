@@ -232,8 +232,7 @@ const gridDefaultColDef = {
 
     sortable: true,
     filter: true,
-    // flex: 1,
-    // minWidth: 90,
+
     resizable: true,
 
     // allow every column to be aggregated
@@ -280,6 +279,12 @@ export let Datatable = {
             // @ts-ignore
             window[`ag_grid_${spec.instance_id}_promise`] = gridPromise;
 
+        let column_flex_enabled = (
+            (spec.field_args && Object.keys(spec.field_args).some((k: any) => spec.field_args[k].flex))
+            || (spec.path_args && spec.path_args.some((k: any) => k[1].flex))
+            || (spec.grid_args.defaultColDef || {}).flex
+        );
+
         const gridOptions: any = {
             ...gridDefaultOptions,
             ...spec.grid_args,
@@ -293,7 +298,7 @@ export let Datatable = {
             columnDefs: options.columnDefs,
 
             //https://www.ag-grid.com/javascript-data-grid/row-selection/
-            rowSelection: (spec.actions.length > 0) && (spec.multiple_select ? 'multiple' : 'single'),
+            rowSelection: (spec.actions.length > 0 || spec.on_select) && (spec.multiple_select ? 'multiple' : 'single'),
 
             defaultColDef: {
                 ...gridDefaultColDef,
@@ -331,6 +336,8 @@ export let Datatable = {
                     });
                 }
                 on_grid_show.then(() => {
+                    if (column_flex_enabled)
+                        return;
                     gridOptions.columnApi.autoSizeAllColumns();
                     let content_width = 0;
                     gridOptions.columnApi.getColumns().forEach((column: any) => {
