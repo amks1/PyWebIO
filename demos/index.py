@@ -4,6 +4,7 @@ from pywebio.output import put_markdown, put_row, put_html
 from pywebio.session import info as session_info
 
 index_md = r"""### Basic demo
+The source code of the demos can be found [here](https://github.com/pywebio/PyWebIO/tree/dev/demos).
 
  - [BMI calculation](./bmi): Calculating Body Mass Index based on height and weight
  - [Online chat room](./chat_room): Chat with everyone currently online (using less than 90 lines of code)
@@ -11,6 +12,8 @@ index_md = r"""### Basic demo
  - [Online Gomoku game](./gomoku_game): An online shared Gomoku game (using less than 100 lines of code)
  - [Input demo](./input_usage): Demonstrate the usage of PyWebIO input module 
  - [Output demo](./output_usage): Demonstrate the usage of PyWebIO output module 
+ - [ChatGPT](./chatgpt): A ChatGPT client implemented with PyWebIO
+ - [Wordle](./wordle): A wordle-like game implemented with PyWebIO
  - [Theme preview](./theme): Demo page with various themes supported by PyWebIO
 
 ### Data visualization demo
@@ -49,12 +52,16 @@ PyWebIO supports for data visualization with the third-party libraries.
 
 index_md_zh = r"""### 基本demo
 
+Demo源码[链接](https://github.com/pywebio/PyWebIO/tree/dev/demos)
+
  - [BMI计算](./bmi): 根据身高体重计算BMI指数
  - [聊天室](./chat_room): 和当前所有在线的人聊天 (不到90行代码实现)
  - [Markdown实时预览](./markdown_previewer): 可以实时预览的在线Markdown编辑器 (不到40行代码实现)
  - [在线五子棋游戏](./gomoku_game): 多人协作对战的五子棋游戏 (不到100行代码实现)
  - [输入演示](./input_usage):  演示PyWebIO输入模块的用法
  - [输出演示](./output_usage): 演示PyWebIO输出模块的用法 
+ - [ChatGPT](./chatgpt): 使用PyWebIO编写的ChatGPT客户端
+ - [Wordle](./wordle): 使用PyWebIO编写的猜字游戏(wordle)
  - [主题预览](./theme): 展示PyWebIO支持的各种主题
  - 更多Demo请见[文档](https://pywebio.readthedocs.io)中示例代码的在线Demo
 
