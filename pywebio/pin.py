@@ -137,7 +137,7 @@ from .utils import check_dom_name_value
 _pin_name_chars = set(string.ascii_letters + string.digits + '_-')
 
 __all__ = ['put_input', 'put_textarea', 'put_select', 'put_checkbox', 'put_radio', 'put_slider', 'put_actions',
-           'put_file_upload', 'pin', 'pin_update', 'pin_wait_change', 'pin_on_change']
+           'put_file_upload', 'pin', 'pin_update', 'pin_wait_change', 'pin_on_change', 'get_pin_values']
 
 
 def _pin_output(single_input_return, scope, position):
@@ -256,13 +256,33 @@ def get_client_val():
                                        "https://github.com/wang0618/PyWebIO/issues"
     return res['data']
 
+@chose_impl
+def _get_pin_value(name, strict):
+    send_msg('pin_values', spec=dict(names=[name]))
+    data = yield get_client_val()
+    if strict:
+        assert name in data, 'pin widget "%s" doesn\'t exist.' % name
+    return data.get(name)
+
 
 @chose_impl
-def get_pin_value(name, strict):
-    send_msg('pin_value', spec=dict(name=name))
+def _get_pin_values(names: list[str]):
+    send_msg('pin_values', spec=dict(names=names))
     data = yield get_client_val()
-    assert not strict or data, 'pin widget "%s" doesn\'t exist.' % name
-    return (data or {}).get('value')
+    return data
+
+
+def get_pin_values(names: list[str]) -> dict[str, Any]:
+    """
+    Get the value of multiple pin widgets.
+    Compared to using the :data:`pin` object to get the value of the pin widget one by one,
+    this function can get the value of multiple pin widgets at once and is more efficient
+    when getting the value of multiple pin widgets.
+
+    :return: A dict, the key is the name of the pin widget, and the value is the value of the pin widget.
+       If the pin widget does not exist, the dict will not contain the corresponding key.
+    """
+    return _get_pin_values(names)
 
 
 class Pin_:
@@ -283,7 +303,7 @@ class Pin_:
 
     def __getitem__(self, name: str):
         check_dom_name_value(name, 'pin `name`')
-        return get_pin_value(name, self._strict)
+        return _get_pin_value(name, self._strict)
 
     def __setattr__(self, name: str, value):
         """
