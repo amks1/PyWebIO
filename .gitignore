@@ -3,9 +3,11 @@ __pycache__/
 *$py.class
 *.db
 *.sqlite3
-
+.venv
+.vscode
+.pytest_cache/
 .idea/
-
+node_modules
 pywebio/html/js/pywebio.min.*
 /no_git
 /build

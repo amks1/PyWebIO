@@ -33,6 +33,7 @@ def target():
     put_radio('radio', options=options, label='radio', inline=False, value=None, help_text='help_text')
     put_radio('radio_inline', options=options, label='radio_inline', inline=True, value='B', help_text='help_text')
     put_actions('actions', buttons=['action_a', 'action_b'], label='actions')
+    put_file_upload('file_upload', label='file_upload', multiple=False, help_text='Upload a file')
 
     pin_update('input', help_text='This is help text')
     pin_update('select_multiple', value=['B', 'C'])
@@ -41,7 +42,7 @@ def target():
     assert (yield pin['radio']) == (yield pin.radio) == 'B'
 
     names = ['input', 'textarea', 'code', 'select', 'select_multiple', 'checkbox', 'checkbox_inline', 'radio',
-             'radio_inline', 'actions']
+             'radio_inline', 'actions', 'file_upload']
     values = {}
     on_change_values = {}
 
@@ -89,6 +90,9 @@ def test_one_page(browser: Chrome):
     codeMirror = browser.find_element(By.CSS_SELECTOR, ".CodeMirror pre")
     action_chains = ActionChains(browser)
     action_chains.move_to_element(codeMirror).click(codeMirror).send_keys('3').perform()
+    time.sleep(0.5)
+    file_input = browser.find_element(By.CSS_SELECTOR, '[name=file_upload]')
+    file_input.send_keys('test/Readme.md')
 
 
 def test(server_proc: subprocess.Popen, browser: Chrome):
